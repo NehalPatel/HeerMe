@@ -5,7 +5,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
 import ReminderModal from './ReminderModal';
-import { getReminders, createReminder, deleteReminder } from '../services/api';
+import { getReminders, createReminder, closeReminder, deleteReminder } from '../services/api';
 
 const CATEGORY_COLORS = {
   Academic: '#2563eb',
@@ -24,6 +24,9 @@ function reminderToEvent(r) {
   const [h, m] = (r.time || '00:00').split(':').map(Number);
   d.setHours(h, m, 0, 0);
   const category = r.category || 'Personal';
+  const rawStatus = r.status || 'open';
+  const statusMap = { pending: 'open', done: 'completed' };
+  const status = statusMap[rawStatus] || rawStatus;
   return {
     id: r._id,
     title: r.title,
@@ -35,6 +38,8 @@ function reminderToEvent(r) {
       time: r.time,
       priority: r.priority || 'medium',
       category,
+      status,
+      comments: r.comments || '',
       _raw: r
     }
   };
@@ -43,12 +48,22 @@ function reminderToEvent(r) {
 export default function CalendarView() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [clickedDate, setClickedDate] = useState(null);
   const [detailEvent, setDetailEvent] = useState(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notificationRef = React.useRef(null);
+
+  React.useEffect(() => {
+    function onResize() {
+      setIsMobile(window.innerWidth < 640);
+    }
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   React.useEffect(() => {
     function handleClickOutside(e) {
@@ -141,7 +156,7 @@ export default function CalendarView() {
   const upcomingReminders = useMemo(() => {
     const now = new Date();
     return events
-      .filter((e) => e.start && new Date(e.start) > now)
+      .filter((e) => e.start && new Date(e.start) > now && (e.extendedProps?.status || 'open') === 'open')
       .sort((a, b) => new Date(a.start) - new Date(b.start))
       .slice(0, 10);
   }, [events]);
@@ -149,11 +164,11 @@ export default function CalendarView() {
   const calendarOptions = useMemo(
     () => ({
       plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
-      initialView: 'dayGridMonth',
+      initialView: isMobile ? 'timeGridDay' : 'dayGridMonth',
       headerToolbar: {
-        left: 'prev,next today',
+        left: isMobile ? 'prev,next' : 'prev,next today',
         center: 'title',
-        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        right: isMobile ? 'today' : 'dayGridMonth,timeGridWeek,timeGridDay'
       },
       buttonText: { today: 'Today', dayGridMonth: 'Month', timeGridWeek: 'Week', timeGridDay: 'Day' },
       editable: false,
@@ -164,10 +179,15 @@ export default function CalendarView() {
       dateClick: handleDateClick,
       eventClick: handleEventClick,
       events,
-      height: 'auto',
+      height: isMobile ? 'auto' : 'auto',
+      expandRows: true,
+      stickyHeaderDates: true,
+      handleWindowResize: true,
+      dayMaxEventRows: isMobile ? 2 : true,
+      titleFormat: isMobile ? { year: 'numeric', month: 'short' } : { year: 'numeric', month: 'long' },
       nowIndicator: true
     }),
-    [events]
+    [events, isMobile]
   );
 
   return (
@@ -225,6 +245,11 @@ export default function CalendarView() {
                             >
                               <span className={`block font-medium text-sm ${style.text}`}>{ev.title}</span>
                               <span className="block text-xs text-slate-500 mt-0.5">{dateStr} at {timeStr}</span>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-white/70 text-[10px] text-slate-700">
+                                  {(ev.extendedProps?.status || 'open').toUpperCase()}
+                                </span>
+                              </div>
                             </button>
                           </li>
                         );
@@ -244,8 +269,10 @@ export default function CalendarView() {
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-500 border-t-transparent" />
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 sm:p-6">
+            <div className="heerme-calendar">
             <FullCalendar {...calendarOptions} />
+            </div>
           </div>
         )}
       </main>
@@ -268,6 +295,11 @@ export default function CalendarView() {
             event={detailEvent}
             onClose={() => { setDetailModalOpen(false); setDetailEvent(null); }}
             onDelete={() => handleDeleteReminder(detailEvent.id)}
+            onClosed={async () => {
+              setDetailModalOpen(false);
+              setDetailEvent(null);
+              await fetchReminders();
+            }}
           />
         )}
       </Modal>
@@ -275,7 +307,7 @@ export default function CalendarView() {
   );
 }
 
-function DetailModal({ event, onClose, onDelete }) {
+function DetailModal({ event, onClose, onDelete, onClosed }) {
   const start = event.start;
   const dateStr = start ? new Date(start).toLocaleDateString(undefined, {
     weekday: 'short',
@@ -286,6 +318,12 @@ function DetailModal({ event, onClose, onDelete }) {
   const timeStr = event.extendedProps?.time || (start ? new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
   const priority = event.extendedProps?.priority || 'medium';
   const category = event.extendedProps?.category || 'Personal';
+  const status = event.extendedProps?.status || 'open';
+  const comments = event.extendedProps?.comments || '';
+  const priorityStyle = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
+  const isClosed = status !== 'open';
+  const [closeStatus, setCloseStatus] = React.useState('completed');
+  const [closeComments, setCloseComments] = React.useState(comments || '');
 
   return (
     <div className="p-6">
@@ -295,12 +333,63 @@ function DetailModal({ event, onClose, onDelete }) {
         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
           {category}
         </span>
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityStyle.bg} ${priorityStyle.text}`}>
           {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
+        </span>
+        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+          {status.charAt(0).toUpperCase() + status.slice(1)}
         </span>
       </div>
       {event.extendedProps?.description && (
         <p className="text-slate-600 text-sm mb-4 whitespace-pre-wrap">{event.extendedProps.description}</p>
+      )}
+      {isClosed && comments && (
+        <div className="mb-4">
+          <p className="text-xs font-medium text-slate-500 mb-1">Comments</p>
+          <p className="text-slate-700 text-sm whitespace-pre-wrap">{comments}</p>
+        </div>
+      )}
+      {!isClosed && (
+        <div className="mb-4 space-y-3">
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-1">Close reminder</p>
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={closeStatus}
+                onChange={(e) => setCloseStatus(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
+              >
+                <option value="completed">Completed</option>
+                <option value="invalid">Invalid</option>
+                <option value="missed">Missed</option>
+              </select>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await closeReminder(event.id, { status: closeStatus, comments: closeComments });
+                    await onClosed?.();
+                  } catch (e) {
+                    console.error('Failed to close reminder', e);
+                  }
+                }}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium text-sm"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Comments</label>
+            <textarea
+              value={closeComments}
+              onChange={(e) => setCloseComments(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none text-sm"
+              rows={3}
+              placeholder="Add closing comments (optional)"
+            />
+          </div>
+        </div>
       )}
       <div className="flex gap-3">
         <button

@@ -22,6 +22,45 @@ body {
   font-weight: 600;
 }
 
+/* Mobile responsiveness */
+@media (max-width: 639px) {
+  .fc .fc-toolbar {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .fc .fc-toolbar-title {
+    font-size: 1.1rem;
+    text-align: center;
+    margin: 0.25rem 0;
+  }
+
+  .fc .fc-button {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .fc .fc-col-header-cell-cushion,
+  .fc .fc-daygrid-day-number {
+    font-size: 0.8rem;
+  }
+}
+
+.heerme-calendar {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.heerme-calendar .fc {
+  min-width: 320px;
+}
+
 .fc .fc-button-primary {
   background-color: var(--fc-button-bg-color);
   border-color: var(--fc-button-border-color);
