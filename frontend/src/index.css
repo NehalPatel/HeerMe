@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fc-today-bg-color: rgba(14, 165, 233, 0.15);
+  --fc-button-bg-color: #0ea5e9;
+  --fc-button-border-color: #0ea5e9;
+  --fc-button-hover-bg-color: #0284c7;
+  --fc-button-hover-border-color: #0284c7;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+/* FullCalendar overrides for HeerMe theme */
+.fc .fc-toolbar-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.fc .fc-button-primary {
+  background-color: var(--fc-button-bg-color);
+  border-color: var(--fc-button-border-color);
+}
+
+.fc .fc-button-primary:hover {
+  background-color: var(--fc-button-hover-bg-color);
+  border-color: var(--fc-button-hover-border-color);
+}
+
+.fc .fc-day-today {
+  background: var(--fc-today-bg-color);
+}
+
+.fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.fc .fc-scrollgrid {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Modal overlay */
+.ReactModal__Overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ReactModal__Content {
+  border-radius: 12px;
+  padding: 0;
+  max-height: 90vh;
+  overflow: auto;
+}
