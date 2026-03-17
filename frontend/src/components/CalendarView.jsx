@@ -164,7 +164,7 @@ export default function CalendarView() {
   const calendarOptions = useMemo(
     () => ({
       plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
-      initialView: isMobile ? 'timeGridDay' : 'dayGridMonth',
+      initialView: 'dayGridMonth',
       headerToolbar: {
         left: isMobile ? 'prev,next' : 'prev,next today',
         center: 'title',
@@ -193,9 +193,9 @@ export default function CalendarView() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-2xl font-bold text-primary-600">HeerMe</h1>
-          <div className="flex items-center justify-end">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-primary-600 leading-none">HeerMe</h1>
+          <div className="flex items-center justify-end flex-none">
             <div className="relative" ref={notificationRef}>
               <button
                 type="button"
@@ -276,6 +276,21 @@ export default function CalendarView() {
           </div>
         )}
       </main>
+
+      {isMobile && (
+        <button
+          type="button"
+          onClick={() => {
+            setClickedDate(new Date().toISOString().slice(0, 10));
+            setDetailEvent(null);
+            setModalOpen(true);
+          }}
+          className="fixed bottom-5 right-5 z-40 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 px-4 py-3 font-medium"
+          aria-label="Add reminder"
+        >
+          + Add
+        </button>
+      )}
 
       <ReminderModal
         isOpen={modalOpen}
