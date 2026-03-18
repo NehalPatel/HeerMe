@@ -5,6 +5,19 @@ const { RRule } = rrulePkg;
 
 const router = express.Router();
 
+function formatHHmmInTimeZone(date, timeZone = 'Asia/Kolkata') {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '00:00';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(date);
+  const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${h}:${m}`;
+}
+
 function isValidIsoDateString(v) {
   if (typeof v !== 'string') return false;
   const d = new Date(v);
@@ -125,6 +138,7 @@ router.get('/occurrences', async (req, res) => {
         // Non-recurring: include if overlaps requested range.
         if (startAt < toDay && endAt > fromDay) {
           const override = getOverrideForOccurrence(r, startAt);
+          const tz = r.timezone || 'Asia/Kolkata';
           out.push({
             occurrenceId: String(r._id),
             reminderId: String(r._id),
@@ -132,12 +146,12 @@ router.get('/occurrences', async (req, res) => {
             endAt: new Date(startAt.getTime() + durationMs).toISOString(),
             title: r.title,
             description: r.description || '',
-            time: r.time,
+            time: formatHHmmInTimeZone(startAt, tz),
             priority: r.priority,
             category: r.category,
             status: override?.status || r.status,
             comments: typeof override?.comments === 'string' ? override.comments : (r.comments || ''),
-            timezone: r.timezone || 'Asia/Kolkata',
+            timezone: tz,
             recurrence: null
           });
         }
@@ -167,6 +181,7 @@ router.get('/occurrences', async (req, res) => {
       for (const occStart of starts) {
         const occEnd = new Date(occStart.getTime() + durationMs);
         const override = getOverrideForOccurrence(r, occStart);
+        const tz = r.timezone || 'Asia/Kolkata';
         out.push({
           occurrenceId: `${String(r._id)}@${occStart.toISOString()}`,
           reminderId: String(r._id),
@@ -174,12 +189,12 @@ router.get('/occurrences', async (req, res) => {
           endAt: occEnd.toISOString(),
           title: r.title,
           description: r.description || '',
-          time: r.time,
+          time: formatHHmmInTimeZone(occStart, tz),
           priority: r.priority,
           category: r.category,
           status: override?.status || r.status,
           comments: typeof override?.comments === 'string' ? override.comments : (r.comments || ''),
-          timezone: r.timezone || 'Asia/Kolkata',
+          timezone: tz,
           recurrence: {
             freq: String(recurrence.freq).toUpperCase(),
             interval: recurrence.interval ?? 1,
@@ -281,7 +296,7 @@ router.post('/', async (req, res) => {
       description: description || '',
       // Keep legacy date/time populated for compatibility (startAt-derived).
       date: parsedStartAt,
-      time: String(time || `${String(parsedStartAt.getHours()).padStart(2, '0')}:${String(parsedStartAt.getMinutes()).padStart(2, '0')}`),
+      time: String(time || formatHHmmInTimeZone(parsedStartAt, tz)),
       startAt: parsedStartAt,
       endAt: parsedEndAt,
       timezone: tz,
@@ -369,7 +384,7 @@ router.put('/:id', async (req, res) => {
         description: typeof description === 'string' ? description : '',
         // Keep legacy date/time populated for compatibility (startAt-derived).
         date: parsedStartAt,
-        time: String(time || `${String(parsedStartAt.getHours()).padStart(2, '0')}:${String(parsedStartAt.getMinutes()).padStart(2, '0')}`),
+        time: String(time || formatHHmmInTimeZone(parsedStartAt, tz)),
         startAt: parsedStartAt,
         endAt: parsedEndAt,
         timezone: tz,
