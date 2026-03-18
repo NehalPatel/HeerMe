@@ -5,7 +5,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
 import ReminderModal from './ReminderModal';
-import { getReminders, createReminder, updateReminder, deleteReminder } from '../services/api';
+import { getReminderOccurrences, createReminder, updateReminder, updateReminderOccurrence, deleteReminder } from '../services/api';
 import Swal from 'sweetalert2';
 import { REMINDER_STATUSES } from '../constants/reminderStatus';
 
@@ -22,17 +22,17 @@ const PRIORITY_COLORS = {
 };
 
 function reminderToEvent(r) {
-  const d = new Date(r.date);
-  const [h, m] = (r.time || '00:00').split(':').map(Number);
-  d.setHours(h, m, 0, 0);
+  const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
+  const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
   const category = r.category || 'Personal';
   const rawStatus = r.status || 'open';
   const statusMap = { pending: 'open', done: 'completed', 'inprogress': 'in-progress', 'in_progress': 'in-progress' };
   const status = statusMap[rawStatus] || rawStatus;
   return {
-    id: r._id,
+    id: r.occurrenceId || r._id,
     title: r.title,
-    start: d.toISOString(),
+    start: startAt.toISOString(),
+    end: endAt.toISOString(),
     backgroundColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
     borderColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
     extendedProps: {
@@ -42,6 +42,10 @@ function reminderToEvent(r) {
       category,
       status,
       comments: r.comments || '',
+      reminderId: r.reminderId || r._id,
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString(),
+      recurrence: r.recurrence || null,
       _raw: r
     }
   };
@@ -57,6 +61,13 @@ export default function CalendarView() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notificationRef = React.useRef(null);
+  const lastRangeKeyRef = React.useRef('');
+  const [activeRange, setActiveRange] = useState(() => {
+    const now = new Date();
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { from, to };
+  });
 
   React.useEffect(() => {
     function onResize() {
@@ -79,10 +90,12 @@ export default function CalendarView() {
     }
   }, [notificationOpen]);
 
-  const fetchReminders = async () => {
+  const fetchOccurrences = async (range) => {
     setLoading(true);
     try {
-      const data = await getReminders();
+      const from = (range?.from || activeRange.from).toISOString().slice(0, 10);
+      const to = (range?.to || activeRange.to).toISOString().slice(0, 10);
+      const data = await getReminderOccurrences({ from, to });
       setEvents(data.map(reminderToEvent));
     } catch (err) {
       console.error('Failed to fetch reminders', err);
@@ -93,8 +106,8 @@ export default function CalendarView() {
   };
 
   React.useEffect(() => {
-    fetchReminders();
-  }, []);
+    fetchOccurrences(activeRange);
+  }, [activeRange.from, activeRange.to]);
 
   // Schedule browser notifications for upcoming reminders (when tab is open)
   React.useEffect(() => {
@@ -131,19 +144,19 @@ export default function CalendarView() {
   const handleSaveReminder = async (payload) => {
     try {
       await createReminder(payload);
-      await fetchReminders();
+      await fetchOccurrences();
       requestNotificationPermission();
     } catch (err) {
       console.error('Failed to create reminder', err);
     }
   };
 
-  const handleDeleteReminder = async (id) => {
+  const handleDeleteReminder = async (reminderId) => {
     try {
-      await deleteReminder(id);
+      await deleteReminder(reminderId);
       setDetailModalOpen(false);
       setDetailEvent(null);
-      await fetchReminders();
+      await fetchOccurrences();
     } catch (err) {
       console.error('Failed to delete reminder', err);
     }
@@ -188,6 +201,18 @@ export default function CalendarView() {
       dayMaxEventRows: isMobile ? 2 : true,
       titleFormat: isMobile ? { year: 'numeric', month: 'short' } : { year: 'numeric', month: 'long' },
       nowIndicator: true
+      ,
+      datesSet: (arg) => {
+        const from = arg?.start ? new Date(arg.start) : null;
+        const to = arg?.end ? new Date(arg.end) : null;
+        if (from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime())) {
+          const nextKey = `${from.getTime()}-${to.getTime()}`;
+          if (lastRangeKeyRef.current !== nextKey) {
+            lastRangeKeyRef.current = nextKey;
+            setActiveRange({ from, to });
+          }
+        }
+      }
     }),
     [events, isMobile]
   );
@@ -240,7 +265,7 @@ export default function CalendarView() {
                               type="button"
                               onClick={() => {
                                 setNotificationOpen(false);
-                                setDetailEvent({ id: ev.id, title: ev.title, start: ev.start, extendedProps: ev.extendedProps });
+                                setDetailEvent({ id: ev.id, title: ev.title, start: ev.start, end: ev.end, extendedProps: ev.extendedProps });
                                 setDetailModalOpen(true);
                               }}
                               className={`w-full text-left px-4 py-3 border-l-4 ${style.border} ${style.bg} hover:opacity-90 transition-opacity`}
@@ -311,11 +336,11 @@ export default function CalendarView() {
           <DetailModal
             event={detailEvent}
             onClose={() => { setDetailModalOpen(false); setDetailEvent(null); }}
-            onDelete={() => handleDeleteReminder(detailEvent.id)}
+            onDelete={() => handleDeleteReminder(detailEvent.extendedProps?.reminderId || detailEvent.id)}
             onClosed={async () => {
               setDetailModalOpen(false);
               setDetailEvent(null);
-              await fetchReminders();
+              await fetchOccurrences();
             }}
           />
         )}
@@ -325,7 +350,8 @@ export default function CalendarView() {
 }
 
 function DetailModal({ event, onClose, onDelete, onClosed }) {
-  const start = event.start;
+  const start = event.extendedProps?.startAt || event.start;
+  const end = event.extendedProps?.endAt || event.end;
   const initialPriority = event.extendedProps?.priority || 'medium';
   const initialCategory = event.extendedProps?.category || 'Personal';
   const initialStatus = event.extendedProps?.status || 'open';
@@ -352,8 +378,14 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
 
   const [title, setTitle] = React.useState(event.title || '');
   const [description, setDescription] = React.useState(initialDescription);
-  const [date, setDate] = React.useState(toInputDate(start));
+  const initialStart = start ? new Date(start) : new Date();
+  const initialEnd = end ? new Date(end) : new Date(initialStart.getTime() + 60 * 60 * 1000);
+  const [date, setDate] = React.useState(toInputDate(initialStart));
   const [time, setTime] = React.useState(normalizeTime(initialTimeStr));
+  const [endDate, setEndDate] = React.useState(toInputDate(initialEnd));
+  const [endTime, setEndTime] = React.useState(
+    normalizeTime(initialEnd ? `${String(initialEnd.getHours()).padStart(2, '0')}:${String(initialEnd.getMinutes()).padStart(2, '0')}` : '10:00')
+  );
   const [category, setCategory] = React.useState(initialCategory);
   const [priority, setPriority] = React.useState(initialPriority);
   const [status, setStatus] = React.useState(initialStatus);
@@ -435,17 +467,43 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
 
             try {
               setIsSaving(true);
-              const dateTime = new Date(`${date}T${time}`);
-              await updateReminder(event.id, {
-                title: title.trim(),
-                description,
-                date: dateTime.toISOString(),
-                time,
-                category,
-                priority,
-                status,
-                comments
-              });
+              const startAt = new Date(`${date}T${time}`);
+              const endAt = new Date(`${endDate}T${endTime}`);
+              if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()) || endAt <= startAt) {
+                await Swal.fire({
+                  icon: 'error',
+                  title: 'Invalid time range',
+                  text: 'Close date/time must be after start date/time.'
+                });
+                return;
+              }
+
+              const reminderId = event.extendedProps?.reminderId || event.id;
+              const isRecurring = !!(event.extendedProps?._raw?.recurrence || event.extendedProps?.recurrence);
+              const occurrenceStartAt = event.extendedProps?._raw?.startAt || event.extendedProps?.startAt || event.start;
+
+              // If this is a recurring reminder occurrence, changing status/comments should only affect this occurrence.
+              if (isRecurring && occurrenceStartAt) {
+                await updateReminderOccurrence(reminderId, {
+                  occurrenceStartAt,
+                  status,
+                  comments
+                });
+              } else {
+                await updateReminder(reminderId, {
+                  title: title.trim(),
+                  description,
+                  startAt: startAt.toISOString(),
+                  endAt: endAt.toISOString(),
+                  timezone: 'Asia/Kolkata',
+                  // Preserve recurrence on edit unless we add full recurrence UI in this modal later.
+                  recurrence: event.extendedProps?._raw?.recurrence ?? event.extendedProps?.recurrence ?? null,
+                  category,
+                  priority,
+                  status,
+                  comments
+                });
+              }
               await Swal.fire({
                 icon: 'success',
                 title: 'Saved',
@@ -511,6 +569,26 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Close Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Close Time</label>
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               required
             />

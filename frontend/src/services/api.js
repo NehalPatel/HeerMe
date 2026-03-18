@@ -10,9 +10,13 @@ const api = axios.create({
 });
 
 export const getReminders = () => api.get('/reminders').then((res) => res.data);
+export const getReminderOccurrences = ({ from, to, max } = {}) =>
+  api.get('/reminders/occurrences', { params: { from, to, max } }).then((res) => res.data);
 export const createReminder = (data) => api.post('/reminders', data).then((res) => res.data);
 export const updateReminder = (id, data) => api.put(`/reminders/${id}`, data).then((res) => res.data);
 export const closeReminder = (id, data) => api.put(`/reminders/${id}/close`, data).then((res) => res.data);
+export const updateReminderOccurrence = (id, data) =>
+  api.put(`/reminders/${id}/occurrence`, data).then((res) => res.data);
 export const deleteReminder = (id) => api.delete(`/reminders/${id}`).then((res) => res.data);
 
 export default api;
