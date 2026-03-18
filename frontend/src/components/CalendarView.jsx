@@ -193,7 +193,6 @@ export default function CalendarView() {
       weekends: true,
       dateClick: handleDateClick,
       eventClick: handleEventClick,
-      events,
       height: isMobile ? 'auto' : 'auto',
       expandRows: true,
       stickyHeaderDates: true,
@@ -214,7 +213,7 @@ export default function CalendarView() {
         }
       }
     }),
-    [events, isMobile]
+    [isMobile]
   );
 
   return (
@@ -298,7 +297,7 @@ export default function CalendarView() {
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 sm:p-6">
             <div className="heerme-calendar">
-            <FullCalendar {...calendarOptions} />
+            <FullCalendar {...calendarOptions} events={events} />
             </div>
           </div>
         )}
