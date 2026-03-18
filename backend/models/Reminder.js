@@ -7,7 +7,7 @@ const reminderSchema = new mongoose.Schema({
   time: { type: String, required: true },
   priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
   category: { type: String, enum: ['Academic', 'Personal', 'Other'], default: 'Personal' },
-  status: { type: String, enum: ['open', 'completed', 'invalid', 'missed'], default: 'open' },
+  status: { type: String, enum: ['open', 'in-progress', 'completed', 'invalid'], default: 'open' },
   comments: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });

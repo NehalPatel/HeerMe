@@ -5,7 +5,9 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
 import ReminderModal from './ReminderModal';
-import { getReminders, createReminder, closeReminder, deleteReminder } from '../services/api';
+import { getReminders, createReminder, updateReminder, deleteReminder } from '../services/api';
+import Swal from 'sweetalert2';
+import { REMINDER_STATUSES } from '../constants/reminderStatus';
 
 const CATEGORY_COLORS = {
   Academic: '#2563eb',
@@ -25,7 +27,7 @@ function reminderToEvent(r) {
   d.setHours(h, m, 0, 0);
   const category = r.category || 'Personal';
   const rawStatus = r.status || 'open';
-  const statusMap = { pending: 'open', done: 'completed' };
+  const statusMap = { pending: 'open', done: 'completed', 'inprogress': 'in-progress', 'in_progress': 'in-progress' };
   const status = statusMap[rawStatus] || rawStatus;
   return {
     id: r._id,
@@ -302,7 +304,7 @@ export default function CalendarView() {
       <Modal
         isOpen={detailModalOpen}
         onRequestClose={() => { setDetailModalOpen(false); setDetailEvent(null); }}
-        className="bg-white shadow-xl rounded-xl w-full max-w-sm mx-4 outline-none"
+        className="bg-white shadow-xl rounded-xl w-full max-w-2xl mx-4 outline-none"
         overlayClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       >
         {detailEvent && (
@@ -324,102 +326,285 @@ export default function CalendarView() {
 
 function DetailModal({ event, onClose, onDelete, onClosed }) {
   const start = event.start;
-  const dateStr = start ? new Date(start).toLocaleDateString(undefined, {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric'
-  }) : '';
-  const timeStr = event.extendedProps?.time || (start ? new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
-  const priority = event.extendedProps?.priority || 'medium';
-  const category = event.extendedProps?.category || 'Personal';
-  const status = event.extendedProps?.status || 'open';
-  const comments = event.extendedProps?.comments || '';
+  const initialPriority = event.extendedProps?.priority || 'medium';
+  const initialCategory = event.extendedProps?.category || 'Personal';
+  const initialStatus = event.extendedProps?.status || 'open';
+  const initialComments = event.extendedProps?.comments || '';
+  const initialDescription = event.extendedProps?.description || '';
+  const initialTimeStr =
+    event.extendedProps?.time ||
+    (start ? new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '09:00');
+
+  const toInputDate = (d) => {
+    if (!d) return new Date().toISOString().slice(0, 10);
+    const dt = d instanceof Date ? d : new Date(d);
+    return dt.toISOString().slice(0, 10);
+  };
+
+  const normalizeTime = (t) => {
+    if (!t) return '09:00';
+    // Ensure HH:mm for <input type="time" />
+    const parts = String(t).split(':');
+    const h = String(parts[0] ?? '09').padStart(2, '0');
+    const m = String(parts[1] ?? '00').padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const [title, setTitle] = React.useState(event.title || '');
+  const [description, setDescription] = React.useState(initialDescription);
+  const [date, setDate] = React.useState(toInputDate(start));
+  const [time, setTime] = React.useState(normalizeTime(initialTimeStr));
+  const [category, setCategory] = React.useState(initialCategory);
+  const [priority, setPriority] = React.useState(initialPriority);
+  const [status, setStatus] = React.useState(initialStatus);
+  const [comments, setComments] = React.useState(initialComments);
+  const [isSaving, setIsSaving] = React.useState(false);
+
   const priorityStyle = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
-  const isClosed = status !== 'open';
-  const [closeStatus, setCloseStatus] = React.useState('completed');
-  const [closeComments, setCloseComments] = React.useState(comments || '');
+  // Only show read-only details if the reminder was already completed when opened.
+  // If the user changes status to "completed" in the form, they should still be able to Save.
+  const isReadOnly = initialStatus === 'completed';
 
   return (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold text-slate-800 mb-1">{event.title}</h2>
-      <p className="text-sm text-slate-500 mb-2">{dateStr} at {timeStr}</p>
-      <div className="flex gap-2 mb-3">
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-          {category}
-        </span>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityStyle.bg} ${priorityStyle.text}`}>
-          {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
-        </span>
-        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-        </span>
-      </div>
-      {event.extendedProps?.description && (
-        <p className="text-slate-600 text-sm mb-4 whitespace-pre-wrap">{event.extendedProps.description}</p>
-      )}
-      {isClosed && comments && (
-        <div className="mb-4">
-          <p className="text-xs font-medium text-slate-500 mb-1">Comments</p>
-          <p className="text-slate-700 text-sm whitespace-pre-wrap">{comments}</p>
-        </div>
-      )}
-      {!isClosed && (
-        <div className="mb-4 space-y-3">
+    <div className="p-6 max-h-[85vh] overflow-y-auto sm:max-h-none sm:overflow-visible">
+      <h2 className="text-lg font-semibold text-slate-800 mb-4">{isReadOnly ? 'Reminder details' : 'Edit task'}</h2>
+
+      {isReadOnly ? (
+        <div className="space-y-3">
           <div>
-            <p className="text-xs font-medium text-slate-500 mb-1">Close reminder</p>
-            <div className="grid grid-cols-2 gap-3">
-              <select
-                value={closeStatus}
-                onChange={(e) => setCloseStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
-              >
-                <option value="completed">Completed</option>
-                <option value="invalid">Invalid</option>
-                <option value="missed">Missed</option>
-              </select>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await closeReminder(event.id, { status: closeStatus, comments: closeComments });
-                    await onClosed?.();
-                  } catch (e) {
-                    console.error('Failed to close reminder', e);
-                  }
-                }}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium text-sm"
-              >
-                Save
-              </button>
+            <p className="text-xs font-medium text-slate-500 mb-1">Title</p>
+            <p className="text-slate-800 font-medium">{title}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1">Date</p>
+              <p className="text-slate-700 text-sm">{date}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1">Time</p>
+              <p className="text-slate-700 text-sm">{time}</p>
             </div>
           </div>
+          <div className="flex gap-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+              {category}
+            </span>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityStyle.bg} ${priorityStyle.text}`}>
+              {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+              Completed
+            </span>
+          </div>
+
+          {description && (
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1">Description</p>
+              <p className="text-slate-700 text-sm whitespace-pre-wrap">{description}</p>
+            </div>
+          )}
+          {comments && (
+            <div>
+              <p className="text-xs font-medium text-slate-500 mb-1">Comments</p>
+              <p className="text-slate-700 text-sm whitespace-pre-wrap">{comments}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!title.trim()) return;
+
+            try {
+              setIsSaving(true);
+              const dateTime = new Date(`${date}T${time}`);
+              await updateReminder(event.id, {
+                title: title.trim(),
+                description,
+                date: dateTime.toISOString(),
+                time,
+                category,
+                priority,
+                status,
+                comments
+              });
+              await Swal.fire({
+                icon: 'success',
+                title: 'Saved',
+                text: 'Reminder updated successfully.',
+                timer: 1200,
+                showConfirmButton: false
+              });
+              await onClosed?.();
+            } catch (err) {
+              console.error('Failed to update reminder', err);
+              const msg =
+                err?.response?.data?.error ||
+                err?.message ||
+                'Failed to save. Please try again.';
+              await Swal.fire({
+                icon: 'error',
+                title: 'Save failed',
+                text: msg
+              });
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          className="space-y-4"
+        >
+        <div>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Title</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            placeholder="Task title"
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-600 mb-1">Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none text-sm"
+            rows={3}
+            placeholder="Optional description"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Time</label>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Category</label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
+            >
+              <option value="Academic">Academic</option>
+              <option value="Personal">Personal</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+          <div className="sm:col-span-1">
+            <label className="block text-sm font-medium text-slate-600 mb-1">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white text-sm"
+            >
+              {REMINDER_STATUSES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+            <div className="mt-2 flex gap-2">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                {category}
+              </span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityStyle.bg} ${priorityStyle.text}`}>
+                {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
+              </span>
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
+                {REMINDER_STATUSES.find((s) => s.value === status)?.label || status}
+              </span>
+            </div>
+          </div>
+
+          <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-slate-600 mb-1">Comments</label>
             <textarea
-              value={closeComments}
-              onChange={(e) => setCloseComments(e.target.value)}
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none text-sm"
               rows={3}
-              placeholder="Add closing comments (optional)"
+              placeholder="Optional comments"
             />
           </div>
         </div>
+
+        <div className="flex gap-3 pt-2">
+          <button
+            type="submit"
+            disabled={isSaving}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+              isSaving ? 'bg-slate-400 text-white cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-slate-800'
+            }`}
+          >
+            {isSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
+          >
+            Delete
+          </button>
+        </div>
+        </form>
       )}
-      <div className="flex gap-3">
-        <button
-          onClick={onClose}
-          className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
-        >
-          Close
-        </button>
-        <button
-          onClick={onDelete}
-          className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
-        >
-          Delete
-        </button>
-      </div>
     </div>
   );
 }
