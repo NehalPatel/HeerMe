@@ -422,9 +422,10 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
   const [isSaving, setIsSaving] = React.useState(false);
 
   const priorityStyle = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
-  // Only show read-only details if the reminder was already completed when opened.
-  // If the user changes status to "completed" in the form, they should still be able to Save.
-  const isReadOnly = initialStatus === 'completed';
+  // Read-only when already terminal: completed or invalid. User changing to those in the form can still Save.
+  const isReadOnly = initialStatus === 'completed' || initialStatus === 'invalid';
+  const readOnlyStatusLabel =
+    REMINDER_STATUSES.find((s) => s.value === initialStatus)?.label ?? String(initialStatus);
 
   return (
     <div className="p-6 max-h-[85vh] overflow-y-auto sm:max-h-none sm:overflow-visible">
@@ -454,7 +455,7 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
               {priority.charAt(0).toUpperCase() + priority.slice(1)} priority
             </span>
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-              Completed
+              {readOnlyStatusLabel}
             </span>
           </div>
 
