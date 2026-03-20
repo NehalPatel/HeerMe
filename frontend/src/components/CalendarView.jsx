@@ -22,6 +22,13 @@ const COMPLETED_EVENT_COLORS = {
   textColor: '#f8fafc'
 };
 
+/** Invalid status — warning / needs attention */
+const INVALID_EVENT_COLORS = {
+  backgroundColor: '#c2410c',
+  borderColor: '#9a3412',
+  textColor: '#fff7ed'
+};
+
 const PRIORITY_COLORS = {
   low: { bg: 'bg-emerald-100', border: 'border-l-emerald-500', text: 'text-emerald-800' },
   medium: { bg: 'bg-amber-100', border: 'border-l-amber-500', text: 'text-amber-800' },
@@ -36,12 +43,15 @@ function reminderToEvent(r) {
   const statusMap = { pending: 'open', done: 'completed', 'inprogress': 'in-progress', 'in_progress': 'in-progress' };
   const status = statusMap[rawStatus] || rawStatus;
   const isCompleted = status === 'completed';
+  const isInvalid = status === 'invalid';
   const barColor = isCompleted
     ? COMPLETED_EVENT_COLORS
-    : {
-        backgroundColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
-        borderColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other
-      };
+    : isInvalid
+      ? INVALID_EVENT_COLORS
+      : {
+          backgroundColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
+          borderColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other
+        };
   return {
     id: r.occurrenceId || r._id,
     title: r.title,
@@ -50,6 +60,7 @@ function reminderToEvent(r) {
     backgroundColor: barColor.backgroundColor,
     borderColor: barColor.borderColor,
     ...(isCompleted ? { textColor: COMPLETED_EVENT_COLORS.textColor } : {}),
+    ...(isInvalid ? { textColor: INVALID_EVENT_COLORS.textColor } : {}),
     extendedProps: {
       description: r.description,
       time: r.time,
