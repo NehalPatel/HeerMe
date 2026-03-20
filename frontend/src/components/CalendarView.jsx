@@ -15,6 +15,13 @@ const CATEGORY_COLORS = {
   Other: '#8b5cf6'
 };
 
+/** Calendar events for completed tasks — distinct from category colors */
+const COMPLETED_EVENT_COLORS = {
+  backgroundColor: '#64748b',
+  borderColor: '#475569',
+  textColor: '#f8fafc'
+};
+
 const PRIORITY_COLORS = {
   low: { bg: 'bg-emerald-100', border: 'border-l-emerald-500', text: 'text-emerald-800' },
   medium: { bg: 'bg-amber-100', border: 'border-l-amber-500', text: 'text-amber-800' },
@@ -28,13 +35,21 @@ function reminderToEvent(r) {
   const rawStatus = r.status || 'open';
   const statusMap = { pending: 'open', done: 'completed', 'inprogress': 'in-progress', 'in_progress': 'in-progress' };
   const status = statusMap[rawStatus] || rawStatus;
+  const isCompleted = status === 'completed';
+  const barColor = isCompleted
+    ? COMPLETED_EVENT_COLORS
+    : {
+        backgroundColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
+        borderColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other
+      };
   return {
     id: r.occurrenceId || r._id,
     title: r.title,
     start: startAt.toISOString(),
     end: endAt.toISOString(),
-    backgroundColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
-    borderColor: CATEGORY_COLORS[category] || CATEGORY_COLORS.Other,
+    backgroundColor: barColor.backgroundColor,
+    borderColor: barColor.borderColor,
+    ...(isCompleted ? { textColor: COMPLETED_EVENT_COLORS.textColor } : {}),
     extendedProps: {
       description: r.description,
       time: r.time,
