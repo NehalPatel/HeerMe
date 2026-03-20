@@ -62,6 +62,8 @@ export default function CalendarView() {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notificationRef = React.useRef(null);
   const lastRangeKeyRef = React.useRef('');
+  /** Full-page spinner only on first load; refetches must not unmount FullCalendar or Week/Day reset to Month. */
+  const isInitialCalendarLoadRef = React.useRef(true);
   const [activeRange, setActiveRange] = useState(() => {
     const now = new Date();
     const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -91,7 +93,8 @@ export default function CalendarView() {
   }, [notificationOpen]);
 
   const fetchOccurrences = async (range) => {
-    setLoading(true);
+    const showFullPageLoader = isInitialCalendarLoadRef.current;
+    if (showFullPageLoader) setLoading(true);
     try {
       const from = (range?.from || activeRange.from).toISOString().slice(0, 10);
       const to = (range?.to || activeRange.to).toISOString().slice(0, 10);
@@ -101,7 +104,8 @@ export default function CalendarView() {
       console.error('Failed to fetch reminders', err);
       setEvents([]);
     } finally {
-      setLoading(false);
+      if (showFullPageLoader) setLoading(false);
+      isInitialCalendarLoadRef.current = false;
     }
   };
 
