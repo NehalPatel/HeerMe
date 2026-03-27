@@ -176,8 +176,24 @@ export default function CalendarView({ onSignOut }) {
       await createReminder(payload);
       await fetchOccurrences();
       requestNotificationPermission();
+      await Swal.fire({
+        icon: 'success',
+        title: 'Created',
+        text: 'Reminder added successfully.',
+        timer: 1200,
+        showConfirmButton: false
+      });
     } catch (err) {
       console.error('Failed to create reminder', err);
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to create reminder. Please try again.';
+      await Swal.fire({
+        icon: 'error',
+        title: 'Could not create',
+        text: msg
+      });
     }
   };
 

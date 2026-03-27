@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from 'react-modal';
 import DatePicker from 'react-datepicker';
+import Swal from 'sweetalert2';
 
 Modal.setAppElement('#root');
 
@@ -88,16 +89,30 @@ export default function ReminderModal({ isOpen, onClose, initialDate, onSave, re
     return endAt;
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!title.trim()) return;
 
-    if (!(startAt instanceof Date) || Number.isNaN(startAt.getTime())) return;
+    if (!(startAt instanceof Date) || Number.isNaN(startAt.getTime())) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Invalid start',
+        text: 'Please choose a valid start date and time.'
+      });
+      return;
+    }
     const finalEndAt =
       endAt instanceof Date && !Number.isNaN(endAt.getTime())
         ? endAt
         : new Date(startAt.getTime() + 60 * 60 * 1000);
-    if (finalEndAt <= startAt) return;
+    if (finalEndAt <= startAt) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Invalid time range',
+        text: 'End date/time must be after start date/time.'
+      });
+      return;
+    }
 
     let recurrence = null;
     if (repeatEnabled) {
