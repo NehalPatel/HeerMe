@@ -77,7 +77,7 @@ function reminderToEvent(r) {
   };
 }
 
-export default function CalendarView() {
+export default function CalendarView({ onSignOut }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -251,7 +251,16 @@ export default function CalendarView() {
       <header className="bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-primary-600 leading-none">HeerMe</h1>
-          <div className="flex items-center justify-end flex-none">
+          <div className="flex items-center justify-end flex-none gap-1">
+            {typeof onSignOut === 'function' ? (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+              >
+                Sign out
+              </button>
+            ) : null}
             <div className="relative" ref={notificationRef}>
               <button
                 type="button"

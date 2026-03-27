@@ -3,13 +3,18 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import remindersRouter from './routes/reminders.js';
+import authRouter from './routes/auth.js';
+import requireAuth from './middleware/auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
-app.use('/api/reminders', remindersRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/reminders', requireAuth, remindersRouter);
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/heerme';
 
