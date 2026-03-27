@@ -73,4 +73,10 @@ export const updateReminderOccurrence = (id, data) =>
   api.put(`/reminders/${id}/occurrence`, data).then((res) => res.data);
 export const deleteReminder = (id) => api.delete(`/reminders/${id}`).then((res) => res.data);
 
+export const getAttendance = ({ from, to } = {}) =>
+  api.get('/attendance', { params: { from, to } }).then((res) => res.data);
+export const putAttendance = (body) => api.put('/attendance', body).then((res) => res.data);
+export const deleteAttendance = (calendarDate) =>
+  api.delete(`/attendance/${encodeURIComponent(calendarDate)}`).then((res) => res.data);
+
 export default api;

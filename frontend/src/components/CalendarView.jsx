@@ -5,7 +5,16 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import Modal from 'react-modal';
 import ReminderModal from './ReminderModal';
-import { getReminderOccurrences, createReminder, updateReminder, updateReminderOccurrence, deleteReminder } from '../services/api';
+import DayChoiceModal from './DayChoiceModal';
+import AttendanceModal from './AttendanceModal';
+import {
+  getReminderOccurrences,
+  createReminder,
+  updateReminder,
+  updateReminderOccurrence,
+  deleteReminder,
+  getAttendance
+} from '../services/api';
 import Swal from 'sweetalert2';
 import { REMINDER_STATUSES } from '../constants/reminderStatus';
 
@@ -97,6 +106,10 @@ export default function CalendarView({ onSignOut }) {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notificationRef = React.useRef(null);
   const lastRangeKeyRef = React.useRef('');
+  const [dayChoiceOpen, setDayChoiceOpen] = useState(false);
+  const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  const [selectedDayStr, setSelectedDayStr] = useState(null);
+  const [attendanceList, setAttendanceList] = useState([]);
   /** Full-page spinner only on first load; refetches must not unmount FullCalendar or Week/Day reset to Month. */
   const isInitialCalendarLoadRef = React.useRef(true);
   const [activeRange, setActiveRange] = useState(() => {
@@ -153,6 +166,30 @@ export default function CalendarView({ onSignOut }) {
     fetchOccurrences(activeRange);
   }, [activeRange.from, activeRange.to]);
 
+  const refreshAttendance = React.useCallback(async () => {
+    const from = toLocalYmd(activeRange.from);
+    const to = toLocalYmd(activeRange.to);
+    if (!from || !to || from >= to) return;
+    try {
+      const rows = await getAttendance({ from, to });
+      setAttendanceList(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('Failed to load attendance', err);
+    }
+  }, [activeRange.from, activeRange.to]);
+
+  React.useEffect(() => {
+    refreshAttendance();
+  }, [refreshAttendance]);
+
+  const attendanceByDate = useMemo(() => {
+    const m = {};
+    for (const row of attendanceList) {
+      if (row?.calendarDate) m[row.calendarDate] = row;
+    }
+    return m;
+  }, [attendanceList]);
+
   // Schedule browser notifications for upcoming reminders (when tab is open)
   React.useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
@@ -173,9 +210,8 @@ export default function CalendarView({ onSignOut }) {
   }, [events]);
 
   const handleDateClick = (info) => {
-    setClickedDate(info.dateStr);
-    setDetailEvent(null);
-    setModalOpen(true);
+    setSelectedDayStr(info.dateStr);
+    setDayChoiceOpen(true);
   };
 
   const handleEventClick = (info) => {
@@ -253,6 +289,13 @@ export default function CalendarView({ onSignOut }) {
       weekends: true,
       dateClick: handleDateClick,
       eventClick: handleEventClick,
+      dayCellClassNames: (arg) => {
+        const ymd = toLocalYmd(arg.date);
+        const row = attendanceByDate[ymd];
+        if (row?.isLeave) return ['fc-day-heerme-leave'];
+        if (row && (row.checkInAt || row.checkOutAt)) return ['fc-day-heerme-college'];
+        return [];
+      },
       height: isMobile ? 'auto' : 'auto',
       expandRows: true,
       stickyHeaderDates: true,
@@ -273,7 +316,7 @@ export default function CalendarView({ onSignOut }) {
         }
       }
     }),
-    [isMobile]
+    [isMobile, attendanceByDate]
   );
 
   return (
@@ -368,6 +411,17 @@ export default function CalendarView({ onSignOut }) {
             <div className="heerme-calendar">
             <FullCalendar {...calendarOptions} events={events} />
             </div>
+            <p className="text-xs text-slate-500 mt-3 flex flex-wrap gap-x-4 gap-y-1">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm bg-rose-100 border border-rose-200 shrink-0" aria-hidden />
+                Leave
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200 shrink-0" aria-hidden />
+                College in / out logged
+              </span>
+              <span className="text-slate-400">Click a date to add a reminder or log attendance (any day, including Sunday).</span>
+            </p>
           </div>
         )}
       </main>
@@ -376,9 +430,8 @@ export default function CalendarView({ onSignOut }) {
         <button
           type="button"
           onClick={() => {
-            setClickedDate(new Date().toISOString().slice(0, 10));
-            setDetailEvent(null);
-            setModalOpen(true);
+            setSelectedDayStr(toLocalYmd(new Date()));
+            setDayChoiceOpen(true);
           }}
           className="fixed bottom-5 right-5 z-40 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 px-4 py-3 font-medium"
           aria-label="Add reminder"
@@ -387,9 +440,46 @@ export default function CalendarView({ onSignOut }) {
         </button>
       )}
 
+      <DayChoiceModal
+        isOpen={dayChoiceOpen}
+        onClose={() => { setDayChoiceOpen(false); setSelectedDayStr(null); }}
+        dateLabel={
+          selectedDayStr
+            ? new Date(`${selectedDayStr}T12:00:00`).toLocaleDateString(undefined, {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+              })
+            : ''
+        }
+        onAddReminder={() => {
+          if (!selectedDayStr) return;
+          setClickedDate(selectedDayStr);
+          setDetailEvent(null);
+          setDayChoiceOpen(false);
+          setModalOpen(true);
+        }}
+        onCollegeAttendance={() => {
+          setDayChoiceOpen(false);
+          setAttendanceModalOpen(true);
+        }}
+      />
+
+      <AttendanceModal
+        isOpen={attendanceModalOpen}
+        onClose={() => {
+          setAttendanceModalOpen(false);
+          setSelectedDayStr(null);
+        }}
+        calendarDate={selectedDayStr || ''}
+        initialRecord={selectedDayStr ? attendanceByDate[selectedDayStr] : null}
+        onSaved={refreshAttendance}
+      />
+
       <ReminderModal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setClickedDate(null); }}
+        onClose={() => { setModalOpen(false); setClickedDate(null); setSelectedDayStr(null); }}
         initialDate={clickedDate}
         onSave={handleSaveReminder}
       />
@@ -430,9 +520,9 @@ function DetailModal({ event, onClose, onDelete, onClosed }) {
     (start ? new Date(start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '09:00');
 
   const toInputDate = (d) => {
-    if (!d) return new Date().toISOString().slice(0, 10);
+    if (!d) return toLocalYmd(new Date());
     const dt = d instanceof Date ? d : new Date(d);
-    return dt.toISOString().slice(0, 10);
+    return toLocalYmd(dt);
   };
 
   const normalizeTime = (t) => {

@@ -75,6 +75,23 @@ body {
   background: var(--fc-today-bg-color);
 }
 
+/* College attendance cues (month + week/day time columns) */
+.fc .fc-daygrid-day.fc-day-heerme-leave .fc-daygrid-day-frame {
+  background-color: rgba(254, 202, 202, 0.45);
+}
+
+.fc .fc-daygrid-day.fc-day-heerme-college .fc-daygrid-day-frame {
+  background-color: rgba(187, 247, 208, 0.45);
+}
+
+.fc .fc-timegrid-col.fc-day-heerme-leave {
+  background-color: rgba(254, 202, 202, 0.2);
+}
+
+.fc .fc-timegrid-col.fc-day-heerme-college {
+  background-color: rgba(187, 247, 208, 0.2);
+}
+
 .fc-event {
   cursor: pointer;
   border-radius: 4px;

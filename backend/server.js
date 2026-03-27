@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import remindersRouter from './routes/reminders.js';
+import attendanceRouter from './routes/attendance.js';
 import authRouter from './routes/auth.js';
 import requireAuth from './middleware/auth.js';
 
@@ -15,6 +16,7 @@ app.use(cors());
 app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/reminders', requireAuth, remindersRouter);
+app.use('/api/attendance', requireAuth, attendanceRouter);
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/heerme';
 
