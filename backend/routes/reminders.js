@@ -87,8 +87,10 @@ function getStartEndFromDoc(r) {
   return { startAt, endAt };
 }
 
-function startOfDayUtcFromISODate(yyyyMmDd) {
-  const d = new Date(`${yyyyMmDd}T00:00:00.000Z`);
+/** YYYY-MM-DD as start of that calendar day in Asia/Kolkata (matches app / reminders). */
+function startOfDayAppCalendar(yyyyMmDd) {
+  if (typeof yyyyMmDd !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(yyyyMmDd)) return null;
+  const d = new Date(`${yyyyMmDd}T00:00:00+05:30`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -110,13 +112,13 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/reminders/occurrences?from=YYYY-MM-DD&to=YYYY-MM-DD
-// Expands recurring reminders into occurrences within [from, to).
+// Expands recurring reminders into occurrences within [fromDay, toDay) using app calendar (Asia/Kolkata).
 router.get('/occurrences', async (req, res) => {
   try {
     const fromParam = String(req.query.from || '');
     const toParam = String(req.query.to || '');
-    const fromDay = startOfDayUtcFromISODate(fromParam);
-    const toDay = startOfDayUtcFromISODate(toParam);
+    const fromDay = startOfDayAppCalendar(fromParam);
+    const toDay = startOfDayAppCalendar(toParam);
 
     if (!fromDay || !toDay || toDay <= fromDay) {
       return res.status(400).json({ error: 'from/to are required as YYYY-MM-DD with to > from' });

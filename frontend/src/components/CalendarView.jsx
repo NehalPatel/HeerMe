@@ -35,6 +35,15 @@ const PRIORITY_COLORS = {
   high: { bg: 'bg-red-100', border: 'border-l-red-500', text: 'text-red-800' }
 };
 
+/** Local calendar date YYYY-MM-DD (FullCalendar ranges use local midnight; do not use UTC date from toISOString). */
+function toLocalYmd(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function reminderToEvent(r) {
   const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
   const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
@@ -92,8 +101,8 @@ export default function CalendarView({ onSignOut }) {
   const isInitialCalendarLoadRef = React.useRef(true);
   const [activeRange, setActiveRange] = useState(() => {
     const now = new Date();
-    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     return { from, to };
   });
 
@@ -122,8 +131,13 @@ export default function CalendarView({ onSignOut }) {
     const showFullPageLoader = isInitialCalendarLoadRef.current;
     if (showFullPageLoader) setLoading(true);
     try {
-      const from = (range?.from || activeRange.from).toISOString().slice(0, 10);
-      const to = (range?.to || activeRange.to).toISOString().slice(0, 10);
+      const from = toLocalYmd(range?.from || activeRange.from);
+      const to = toLocalYmd(range?.to || activeRange.to);
+      if (!from || !to || from >= to) {
+        console.warn('Invalid occurrence range', { from, to });
+        setEvents([]);
+        return;
+      }
       const data = await getReminderOccurrences({ from, to });
       setEvents(data.map(reminderToEvent));
     } catch (err) {
