@@ -53,6 +53,37 @@ function toLocalYmd(d) {
   return `${y}-${m}-${day}`;
 }
 
+function attendanceMarkerToEvents(row) {
+  if (!row?.calendarDate || row.isLeave) return [];
+  const ymd = row.calendarDate;
+  const out = [];
+  const add = (iso, kind) => {
+    if (!iso) return;
+    const t = new Date(iso);
+    if (Number.isNaN(t.getTime())) return;
+    const end = new Date(t.getTime() + 60 * 1000);
+    out.push({
+      id: `att-${kind}-${ymd}`,
+      title: kind === 'in' ? 'College in' : 'College out',
+      start: t.toISOString(),
+      end: end.toISOString(),
+      backgroundColor: kind === 'in' ? '#047857' : '#1d4ed8',
+      borderColor: kind === 'in' ? '#065f46' : '#1e40af',
+      textColor: '#fff',
+      classNames: ['heerme-att-time-marker', `heerme-att-time-marker-${kind}`],
+      editable: false,
+      extendedProps: {
+        isAttendanceMarker: true,
+        calendarDate: ymd,
+        markerKind: kind
+      }
+    });
+  };
+  add(row.checkInAt, 'in');
+  add(row.checkOutAt, 'out');
+  return out;
+}
+
 function reminderToEvent(r) {
   const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
   const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
@@ -110,6 +141,7 @@ export default function CalendarView({ onSignOut }) {
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   const [selectedDayStr, setSelectedDayStr] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
+  const [fcViewType, setFcViewType] = useState('dayGridMonth');
   /** Full-page spinner only on first load; refetches must not unmount FullCalendar or Week/Day reset to Month. */
   const isInitialCalendarLoadRef = React.useRef(true);
   const [activeRange, setActiveRange] = useState(() => {
@@ -190,12 +222,82 @@ export default function CalendarView({ onSignOut }) {
     return m;
   }, [attendanceList]);
 
+  const leaveNotesInRange = useMemo(
+    () =>
+      attendanceList
+        .filter((r) => r?.isLeave && String(r.notes || '').trim())
+        .map((r) => ({ calendarDate: r.calendarDate, notes: String(r.notes).trim() }))
+        .sort((a, b) => a.calendarDate.localeCompare(b.calendarDate)),
+    [attendanceList]
+  );
+
+  const attendanceTimeMarkers = useMemo(() => {
+    if (fcViewType !== 'timeGridWeek' && fcViewType !== 'timeGridDay') return [];
+    const markers = [];
+    for (const row of attendanceList) {
+      markers.push(...attendanceMarkerToEvents(row));
+    }
+    return markers;
+  }, [attendanceList, fcViewType]);
+
+  const calendarEvents = useMemo(() => [...events, ...attendanceTimeMarkers], [events, attendanceTimeMarkers]);
+
+  React.useEffect(() => {
+    if (loading) return;
+    let cancelled = false;
+    const paintNotes = () => {
+      if (cancelled) return;
+      const root = document.querySelector('.heerme-calendar');
+      if (!root) return;
+
+      root.querySelectorAll('.fc-daygrid-day[data-date]').forEach((el) => {
+        const ymd = el.getAttribute('data-date');
+        if (!ymd) return;
+        const row = attendanceByDate[ymd];
+        const frame = el.querySelector('.fc-daygrid-day-frame');
+        if (!frame) return;
+        frame.querySelector('.heerme-leave-note')?.remove();
+        const note = row?.isLeave && String(row.notes || '').trim() ? String(row.notes).trim() : '';
+        if (note) {
+          const div = document.createElement('div');
+          div.className = 'heerme-leave-note';
+          div.textContent = note;
+          div.title = note;
+          frame.appendChild(div);
+        }
+      });
+
+      root.querySelectorAll('th.fc-col-header-cell[data-date], .fc-col-header-cell[data-date]').forEach((cell) => {
+        const ymd = cell.getAttribute('data-date');
+        if (!ymd) return;
+        const row = attendanceByDate[ymd];
+        cell.querySelector('.heerme-header-leave-note')?.remove();
+        const note = row?.isLeave && String(row.notes || '').trim() ? String(row.notes).trim() : '';
+        if (note && (fcViewType === 'timeGridWeek' || fcViewType === 'timeGridDay')) {
+          const div = document.createElement('div');
+          div.className = 'heerme-header-leave-note';
+          div.textContent = note;
+          div.title = note;
+          cell.appendChild(div);
+        }
+      });
+    };
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(paintNotes);
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [loading, attendanceByDate, attendanceList, activeRange.from, activeRange.to, fcViewType]);
+
   // Schedule browser notifications for upcoming reminders (when tab is open)
   React.useEffect(() => {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const timeouts = [];
     const now = Date.now();
     events.forEach((ev) => {
+      if (ev.extendedProps?.isAttendanceMarker) return;
       const start = ev.start ? new Date(ev.start).getTime() : 0;
       const delay = start - now;
       if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
@@ -216,6 +318,7 @@ export default function CalendarView({ onSignOut }) {
 
   const handleEventClick = (info) => {
     info.jsEvent.preventDefault();
+    if (info.event.extendedProps?.isAttendanceMarker) return;
     setDetailEvent(info.event);
     setClickedDate(null);
     setDetailModalOpen(true);
@@ -267,6 +370,7 @@ export default function CalendarView({ onSignOut }) {
   const upcomingReminders = useMemo(() => {
     const now = new Date();
     return events
+      .filter((e) => !e.extendedProps?.isAttendanceMarker)
       .filter((e) => e.start && new Date(e.start) > now && (e.extendedProps?.status || 'open') === 'open')
       .sort((a, b) => new Date(a.start) - new Date(b.start))
       .slice(0, 10);
@@ -305,6 +409,7 @@ export default function CalendarView({ onSignOut }) {
       nowIndicator: true
       ,
       datesSet: (arg) => {
+        if (arg.view?.type) setFcViewType(arg.view.type);
         const from = arg?.start ? new Date(arg.start) : null;
         const to = arg?.end ? new Date(arg.end) : null;
         if (from && to && !Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime())) {
@@ -409,8 +514,28 @@ export default function CalendarView({ onSignOut }) {
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 sm:p-6">
             <div className="heerme-calendar">
-            <FullCalendar {...calendarOptions} events={events} />
+            <FullCalendar {...calendarOptions} events={calendarEvents} />
             </div>
+            {leaveNotesInRange.length > 0 && (
+              <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs text-slate-700">
+                <p className="font-medium text-rose-900 mb-1.5">Leave notes (this view)</p>
+                <ul className="space-y-1 list-disc list-inside text-slate-600">
+                  {leaveNotesInRange.map(({ calendarDate, notes }) => (
+                    <li key={calendarDate}>
+                      <span className="font-medium text-slate-800">
+                        {new Date(`${calendarDate}T12:00:00`).toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric'
+                        })}
+                      </span>
+                      {' — '}
+                      {notes}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <p className="text-xs text-slate-500 mt-3 flex flex-wrap gap-x-4 gap-y-1">
               <span className="inline-flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-sm bg-rose-100 border border-rose-200 shrink-0" aria-hidden />
@@ -420,7 +545,9 @@ export default function CalendarView({ onSignOut }) {
                 <span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200 shrink-0" aria-hidden />
                 College in / out logged
               </span>
-              <span className="text-slate-400">Click a date to add a reminder or log attendance (any day, including Sunday).</span>
+              <span className="text-slate-400">
+                Week/Day view: green block = college in, blue = out. Click a date for reminders or attendance (any day).
+              </span>
             </p>
           </div>
         )}

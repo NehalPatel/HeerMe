@@ -97,6 +97,49 @@ body {
   border-radius: 4px;
 }
 
+/* Attendance in/out markers (week & day time grid) — compact timed blocks */
+.fc .fc-v-event.heerme-att-time-marker,
+.fc .fc-timegrid-event.heerme-att-time-marker {
+  cursor: default;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+  padding: 0 3px;
+  border-radius: 2px;
+  min-height: 1.1em;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.fc .fc-timegrid-event.heerme-att-time-marker .fc-event-main {
+  padding: 1px 0;
+}
+
+/* Leave notes inside month day cells + week/day column headers */
+.fc .heerme-leave-note {
+  font-size: 0.65rem;
+  line-height: 1.25;
+  color: #9f1239;
+  margin-top: 0.2rem;
+  padding: 0 0.15rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.fc .heerme-header-leave-note {
+  font-size: 0.65rem;
+  line-height: 1.2;
+  color: #9f1239;
+  margin-top: 0.25rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
 .fc .fc-scrollgrid {
   border-radius: 8px;
   overflow: hidden;
