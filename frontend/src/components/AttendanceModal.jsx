@@ -5,6 +5,19 @@ import { putAttendance, deleteAttendance } from '../services/api';
 
 Modal.setAppElement('#root');
 
+/** @param {string} prop @param {object|null} record */
+function resolveYmd(prop, record) {
+  const candidates = [prop, record?.calendarDate];
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    const s = String(c).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  return '';
+}
+
 function isoToTimeInput(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -43,13 +56,22 @@ export default function AttendanceModal({ isOpen, onClose, calendarDate, initial
 
   async function handleSubmit(e) {
     e.preventDefault();
+    const ymd = resolveYmd(calendarDate, initialRecord);
+    if (!ymd) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Save failed',
+        text: 'Missing calendar date. Close and open attendance again.'
+      });
+      return;
+    }
     setSaving(true);
     try {
       const body = {
-        calendarDate,
+        calendarDate: ymd,
         isLeave,
-        checkInAt: isLeave ? null : localTimeToIso(calendarDate, checkInTime),
-        checkOutAt: isLeave ? null : localTimeToIso(calendarDate, checkOutTime),
+        checkInAt: isLeave ? null : localTimeToIso(ymd, checkInTime),
+        checkOutAt: isLeave ? null : localTimeToIso(ymd, checkOutTime),
         notes: notes.trim()
       };
       await putAttendance(body);
@@ -71,7 +93,8 @@ export default function AttendanceModal({ isOpen, onClose, calendarDate, initial
   }
 
   async function handleClear() {
-    if (!initialRecord?._id) {
+    const ymd = resolveYmd(calendarDate, initialRecord);
+    if (!initialRecord?._id || !ymd) {
       onClose();
       return;
     }
@@ -86,7 +109,7 @@ export default function AttendanceModal({ isOpen, onClose, calendarDate, initial
     if (!ok.isConfirmed) return;
     setSaving(true);
     try {
-      await deleteAttendance(calendarDate);
+      await deleteAttendance(ymd);
       await Swal.fire({
         icon: 'success',
         title: 'Removed',
@@ -103,9 +126,10 @@ export default function AttendanceModal({ isOpen, onClose, calendarDate, initial
     }
   }
 
+  const displayYmd = resolveYmd(calendarDate, initialRecord);
   const weekday =
-    calendarDate &&
-    new Date(`${calendarDate}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' });
+    displayYmd &&
+    new Date(`${displayYmd}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long' });
 
   return (
     <Modal
@@ -117,7 +141,7 @@ export default function AttendanceModal({ isOpen, onClose, calendarDate, initial
       <form onSubmit={handleSubmit} className="p-6">
         <h2 className="text-xl font-semibold text-slate-800 mb-1">College attendance</h2>
         <p className="text-sm text-slate-500 mb-4">
-          {calendarDate}
+          {displayYmd || calendarDate}
           {weekday ? ` · ${weekday}` : ''}
           <span className="block text-xs mt-1 text-slate-400">Reminders stay separate — you can still use this day for tasks.</span>
         </p>

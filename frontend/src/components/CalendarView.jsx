@@ -53,9 +53,18 @@ function toLocalYmd(d) {
   return `${y}-${m}-${day}`;
 }
 
+/** Normalize API/store calendarDate to YYYY-MM-DD (handles ISO datetimes). */
+function normalizeAttendanceYmd(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
 function attendanceMarkerToEvents(row) {
-  if (!row?.calendarDate || row.isLeave) return [];
-  const ymd = row.calendarDate;
+  const ymd = normalizeAttendanceYmd(row?.calendarDate);
+  if (!ymd || row.isLeave) return [];
   const out = [];
   const add = (iso, kind) => {
     if (!iso) return;
@@ -139,6 +148,8 @@ export default function CalendarView({ onSignOut }) {
   const lastRangeKeyRef = React.useRef('');
   const [dayChoiceOpen, setDayChoiceOpen] = useState(false);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
+  /** YYYY-MM-DD for attendance modal only — avoids clearing when day-choice closes. */
+  const [attendanceCalendarDate, setAttendanceCalendarDate] = useState(null);
   const [selectedDayStr, setSelectedDayStr] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [fcViewType, setFcViewType] = useState('dayGridMonth');
@@ -217,7 +228,8 @@ export default function CalendarView({ onSignOut }) {
   const attendanceByDate = useMemo(() => {
     const m = {};
     for (const row of attendanceList) {
-      if (row?.calendarDate) m[row.calendarDate] = row;
+      const key = normalizeAttendanceYmd(row?.calendarDate);
+      if (key) m[key] = row;
     }
     return m;
   }, [attendanceList]);
@@ -319,10 +331,11 @@ export default function CalendarView({ onSignOut }) {
   const handleEventClick = (info) => {
     info.jsEvent.preventDefault();
     if (info.event.extendedProps?.isAttendanceMarker) {
-      const ymd =
+      const raw =
         info.event.extendedProps?.calendarDate || toLocalYmd(info.event.start);
-      if (ymd) {
-        setSelectedDayStr(ymd);
+      const ymd = normalizeAttendanceYmd(raw) || raw;
+      if (ymd && /^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+        setAttendanceCalendarDate(ymd);
         setAttendanceModalOpen(true);
       }
       return;
@@ -596,6 +609,7 @@ export default function CalendarView({ onSignOut }) {
           setModalOpen(true);
         }}
         onCollegeAttendance={() => {
+          if (selectedDayStr) setAttendanceCalendarDate(selectedDayStr);
           setDayChoiceOpen(false);
           setAttendanceModalOpen(true);
         }}
@@ -605,10 +619,13 @@ export default function CalendarView({ onSignOut }) {
         isOpen={attendanceModalOpen}
         onClose={() => {
           setAttendanceModalOpen(false);
+          setAttendanceCalendarDate(null);
           setSelectedDayStr(null);
         }}
-        calendarDate={selectedDayStr || ''}
-        initialRecord={selectedDayStr ? attendanceByDate[selectedDayStr] : null}
+        calendarDate={attendanceCalendarDate || ''}
+        initialRecord={
+          attendanceCalendarDate ? attendanceByDate[attendanceCalendarDate] : null
+        }
         onSaved={refreshAttendance}
       />
 
