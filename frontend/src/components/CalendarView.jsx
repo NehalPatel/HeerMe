@@ -318,7 +318,15 @@ export default function CalendarView({ onSignOut }) {
 
   const handleEventClick = (info) => {
     info.jsEvent.preventDefault();
-    if (info.event.extendedProps?.isAttendanceMarker) return;
+    if (info.event.extendedProps?.isAttendanceMarker) {
+      const ymd =
+        info.event.extendedProps?.calendarDate || toLocalYmd(info.event.start);
+      if (ymd) {
+        setSelectedDayStr(ymd);
+        setAttendanceModalOpen(true);
+      }
+      return;
+    }
     setDetailEvent(info.event);
     setClickedDate(null);
     setDetailModalOpen(true);

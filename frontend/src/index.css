@@ -100,7 +100,7 @@ body {
 /* Attendance in/out markers (week & day time grid) — compact timed blocks */
 .fc .fc-v-event.heerme-att-time-marker,
 .fc .fc-timegrid-event.heerme-att-time-marker {
-  cursor: default;
+  cursor: pointer;
   font-size: 0.65rem;
   font-weight: 700;
   line-height: 1.1;
