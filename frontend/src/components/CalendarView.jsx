@@ -93,6 +93,143 @@ function attendanceMarkerToEvents(row) {
   return out;
 }
 
+function addCalendarDays(d, days) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
+function eachCalendarDay(fromDate, toExclusive, fn) {
+  let d = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
+  const end = new Date(toExclusive.getFullYear(), toExclusive.getMonth(), toExclusive.getDate());
+  while (d < end) {
+    fn(new Date(d));
+    d = addCalendarDays(d, 1);
+  }
+}
+
+function isWeekday(d) {
+  const day = d.getDay();
+  return day >= 1 && day <= 5;
+}
+
+function formatAnalyticsRangeLabel(fromDate, toExclusive) {
+  const endIncl = addCalendarDays(toExclusive, -1);
+  if (
+    fromDate.getFullYear() === endIncl.getFullYear() &&
+    fromDate.getMonth() === endIncl.getMonth()
+  ) {
+    return fromDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  }
+  const a = fromDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const b = endIncl.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return `${a} – ${b}`;
+}
+
+function computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive) {
+  const byDate = {};
+  for (const row of attendanceList) {
+    const k = normalizeAttendanceYmd(row?.calendarDate);
+    if (k) byDate[k] = row;
+  }
+  let totalMs = 0;
+  let presentWeekdays = 0;
+  let weekdayCount = 0;
+  let weekdayLeave = 0;
+  eachCalendarDay(rangeFrom, toExclusive, (d) => {
+    if (!isWeekday(d)) return;
+    weekdayCount += 1;
+    const ymd = toLocalYmd(d);
+    const row = byDate[ymd];
+    if (row?.isLeave) {
+      weekdayLeave += 1;
+      return;
+    }
+    if (row?.checkInAt && row?.checkOutAt) {
+      const a = new Date(row.checkInAt).getTime();
+      const b = new Date(row.checkOutAt).getTime();
+      if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) {
+        totalMs += b - a;
+        presentWeekdays += 1;
+      }
+    }
+  });
+  const expectedWeekdays = weekdayCount - weekdayLeave;
+  const attendancePct =
+    expectedWeekdays > 0 ? Math.round((presentWeekdays / expectedWeekdays) * 1000) / 10 : null;
+  return {
+    totalHours: Math.round((totalMs / 3600000) * 10) / 10,
+    presentWeekdays,
+    weekdayCount,
+    weekdayLeave,
+    expectedWeekdays,
+    attendancePct
+  };
+}
+
+function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rangeLoading }) {
+  const stats = useMemo(
+    () => computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive),
+    [attendanceList, rangeFrom, toExclusive]
+  );
+  const title = formatAnalyticsRangeLabel(rangeFrom, toExclusive);
+
+  return (
+    <div className="px-1 py-2 sm:px-2">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-800">Attendance analytics</h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            College in/out for{' '}
+            <span className="font-medium text-slate-700">{title}</span>
+            <span className="text-slate-400"> (visible calendar range)</span>
+          </p>
+        </div>
+        {rangeLoading ? (
+          <span className="inline-flex items-center gap-2 text-xs text-slate-500">
+            <span
+              className="h-3.5 w-3.5 rounded-full border-2 border-primary-500 border-t-transparent animate-spin shrink-0"
+              aria-hidden
+            />
+            Updating…
+          </span>
+        ) : null}
+      </div>
+      <p className="text-xs text-slate-500 mb-4">
+        Percentage counts weekdays (Mon–Fri) in this range: present means both in and out logged; leave days
+        are excluded from the expected count.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total hours on campus</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
+            {stats.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}
+            <span className="text-base font-normal text-slate-500 ml-1">h</span>
+          </p>
+          <p className="text-xs text-slate-500 mt-2">Sum of (out − in) per weekday with both times.</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Attendance</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
+            {stats.attendancePct != null ? `${stats.attendancePct}%` : '—'}
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            {stats.presentWeekdays} present / {stats.expectedWeekdays} expected weekdays
+            {stats.weekdayLeave > 0 ? ` (${stats.weekdayLeave} leave)` : ''}
+          </p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Weekdays in range</p>
+          <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">{stats.weekdayCount}</p>
+          <p className="text-xs text-slate-500 mt-2">
+            Use the Calendar tab to change month or view; stats follow the same range as the grid.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function reminderToEvent(r) {
   const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
   const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
@@ -153,8 +290,11 @@ export default function CalendarView({ onSignOut }) {
   const [selectedDayStr, setSelectedDayStr] = useState(null);
   const [attendanceList, setAttendanceList] = useState([]);
   const [fcViewType, setFcViewType] = useState('dayGridMonth');
+  const [mainTab, setMainTab] = useState('calendar');
   /** Full-page spinner only on first load; refetches must not unmount FullCalendar or Week/Day reset to Month. */
   const isInitialCalendarLoadRef = React.useRef(true);
+  const rangeSeqRef = React.useRef(0);
+  const [rangeLoading, setRangeLoading] = useState(false);
   const [activeRange, setActiveRange] = useState(() => {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -183,30 +323,21 @@ export default function CalendarView({ onSignOut }) {
     }
   }, [notificationOpen]);
 
-  const fetchOccurrences = async (range) => {
-    const showFullPageLoader = isInitialCalendarLoadRef.current;
-    if (showFullPageLoader) setLoading(true);
+  const fetchOccurrences = React.useCallback(async () => {
+    const from = toLocalYmd(activeRange.from);
+    const to = toLocalYmd(activeRange.to);
+    if (!from || !to || from >= to) {
+      console.warn('Invalid occurrence range', { from, to });
+      setEvents([]);
+      return;
+    }
     try {
-      const from = toLocalYmd(range?.from || activeRange.from);
-      const to = toLocalYmd(range?.to || activeRange.to);
-      if (!from || !to || from >= to) {
-        console.warn('Invalid occurrence range', { from, to });
-        setEvents([]);
-        return;
-      }
       const data = await getReminderOccurrences({ from, to });
       setEvents(data.map(reminderToEvent));
     } catch (err) {
       console.error('Failed to fetch reminders', err);
       setEvents([]);
-    } finally {
-      if (showFullPageLoader) setLoading(false);
-      isInitialCalendarLoadRef.current = false;
     }
-  };
-
-  React.useEffect(() => {
-    fetchOccurrences(activeRange);
   }, [activeRange.from, activeRange.to]);
 
   const refreshAttendance = React.useCallback(async () => {
@@ -222,8 +353,45 @@ export default function CalendarView({ onSignOut }) {
   }, [activeRange.from, activeRange.to]);
 
   React.useEffect(() => {
-    refreshAttendance();
-  }, [refreshAttendance]);
+    const seq = ++rangeSeqRef.current;
+    const from = toLocalYmd(activeRange.from);
+    const to = toLocalYmd(activeRange.to);
+    if (!from || !to || from >= to) return;
+
+    const showFullPage = isInitialCalendarLoadRef.current;
+    if (showFullPage) setLoading(true);
+    else setRangeLoading(true);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [occData, attRows] = await Promise.all([
+          getReminderOccurrences({ from, to }),
+          getAttendance({ from, to })
+        ]);
+        if (cancelled || seq !== rangeSeqRef.current) return;
+        setEvents(occData.map(reminderToEvent));
+        setAttendanceList(Array.isArray(attRows) ? attRows : []);
+      } catch (err) {
+        if (cancelled || seq !== rangeSeqRef.current) return;
+        console.error('Failed to load calendar data', err);
+        setEvents([]);
+        setAttendanceList([]);
+      } finally {
+        if (cancelled || seq !== rangeSeqRef.current) return;
+        if (showFullPage) {
+          setLoading(false);
+          isInitialCalendarLoadRef.current = false;
+        } else {
+          setRangeLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRange.from, activeRange.to]);
 
   const attendanceByDate = useMemo(() => {
     const m = {};
@@ -529,47 +697,117 @@ export default function CalendarView({ onSignOut }) {
 
       <main className="max-w-6xl mx-auto px-4 py-6">
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-500 border-t-transparent" />
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="heerme-calendar-skeleton-shimmer h-3 w-full opacity-90" aria-hidden />
+            <div className="flex flex-col items-center justify-center py-20 px-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary-500 border-t-transparent mb-4" />
+              <div className="w-full max-w-md space-y-3">
+                <div className="h-3 rounded bg-slate-200 animate-pulse w-3/4 mx-auto" />
+                <div className="h-3 rounded bg-slate-200 animate-pulse w-full" />
+                <div className="h-3 rounded bg-slate-200 animate-pulse w-5/6 mx-auto" />
+              </div>
+              <p className="text-sm text-slate-500 mt-5">Loading calendar…</p>
+            </div>
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-3 sm:p-6">
-            <div className="heerme-calendar">
-            <FullCalendar {...calendarOptions} events={calendarEvents} />
+            <div className="flex flex-wrap gap-1 border-b border-slate-200 -mx-3 sm:-mx-6 px-3 sm:px-6 mb-4 sm:mb-5 pb-0">
+              <button
+                type="button"
+                onClick={() => setMainTab('calendar')}
+                className={`px-3 sm:px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                  mainTab === 'calendar'
+                    ? 'border-primary-500 text-primary-700 bg-primary-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                Calendar
+              </button>
+              <button
+                type="button"
+                onClick={() => setMainTab('analytics')}
+                className={`px-3 sm:px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                  mainTab === 'analytics'
+                    ? 'border-primary-500 text-primary-700 bg-primary-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                Attendance analytics
+              </button>
             </div>
-            {leaveNotesInRange.length > 0 && (
-              <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs text-slate-700">
-                <p className="font-medium text-rose-900 mb-1.5">Leave notes (this view)</p>
-                <ul className="space-y-1 list-disc list-inside text-slate-600">
-                  {leaveNotesInRange.map(({ calendarDate, notes }) => (
-                    <li key={calendarDate}>
-                      <span className="font-medium text-slate-800">
-                        {new Date(`${calendarDate}T12:00:00`).toLocaleDateString(undefined, {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      {' — '}
-                      {notes}
-                    </li>
-                  ))}
-                </ul>
+
+            <div className={mainTab === 'calendar' ? 'block' : 'hidden'} aria-hidden={mainTab !== 'calendar'}>
+              <div className="relative rounded-lg min-h-[18rem]">
+                {rangeLoading ? (
+                  <div
+                    className="absolute inset-0 z-20 rounded-lg overflow-hidden flex flex-col items-center justify-start pt-14 sm:pt-20 bg-white/80 backdrop-blur-[1px]"
+                    aria-busy="true"
+                    aria-label="Loading calendar data"
+                  >
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="heerme-calendar-skeleton-shimmer absolute inset-x-0 top-0 h-2.5 opacity-95" />
+                      <div className="absolute inset-0 flex flex-col gap-3 p-4 pt-12 opacity-[0.35]">
+                        <div className="h-4 rounded-md bg-slate-200 animate-pulse w-2/3" />
+                        <div className="grid grid-cols-7 gap-2 flex-1 min-h-[8rem]">
+                          {Array.from({ length: 14 }).map((_, i) => (
+                            <div key={i} className="rounded-md bg-slate-100 animate-pulse" />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="relative flex flex-col items-center gap-3 mt-2">
+                      <div className="h-9 w-9 rounded-full border-2 border-primary-500 border-t-transparent animate-spin" />
+                      <p className="text-sm text-slate-600">Loading this range…</p>
+                    </div>
+                  </div>
+                ) : null}
+                <div className={`heerme-calendar transition-opacity duration-200 ${rangeLoading ? 'opacity-60' : 'opacity-100'}`}>
+                  <FullCalendar {...calendarOptions} events={calendarEvents} />
+                </div>
               </div>
-            )}
-            <p className="text-xs text-slate-500 mt-3 flex flex-wrap gap-x-4 gap-y-1">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm bg-rose-100 border border-rose-200 shrink-0" aria-hidden />
-                Leave
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200 shrink-0" aria-hidden />
-                College in / out logged
-              </span>
-              <span className="text-slate-400">
-                Week/Day view: green block = college in, blue = out. Click a date for reminders or attendance (any day).
-              </span>
-            </p>
+              {leaveNotesInRange.length > 0 && (
+                <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 text-xs text-slate-700">
+                  <p className="font-medium text-rose-900 mb-1.5">Leave notes (this view)</p>
+                  <ul className="space-y-1 list-disc list-inside text-slate-600">
+                    {leaveNotesInRange.map(({ calendarDate, notes }) => (
+                      <li key={calendarDate}>
+                        <span className="font-medium text-slate-800">
+                          {new Date(`${calendarDate}T12:00:00`).toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </span>
+                        {' — '}
+                        {notes}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-xs text-slate-500 mt-3 flex flex-wrap gap-x-4 gap-y-1">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-rose-100 border border-rose-200 shrink-0" aria-hidden />
+                  Leave
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-emerald-100 border border-emerald-200 shrink-0" aria-hidden />
+                  College in / out logged
+                </span>
+                <span className="text-slate-400">
+                  Week/Day view: green block = college in, blue = out. Click a date for reminders or attendance (any day).
+                </span>
+              </p>
+            </div>
+
+            {mainTab === 'analytics' ? (
+              <AttendanceAnalyticsPanel
+                rangeFrom={activeRange.from}
+                toExclusive={activeRange.to}
+                attendanceList={attendanceList}
+                rangeLoading={rangeLoading}
+              />
+            ) : null}
           </div>
         )}
       </main>
