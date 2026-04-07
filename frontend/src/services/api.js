@@ -79,4 +79,56 @@ export const putAttendance = (body) => api.put('/attendance', body).then((res) =
 export const deleteAttendance = (calendarDate) =>
   api.delete(`/attendance/${encodeURIComponent(calendarDate)}`).then((res) => res.data);
 
+function filenameFromContentDisposition(cd) {
+  if (!cd || typeof cd !== 'string') return null;
+  const m =
+    /filename\*=UTF-8''([^;\n]+)|filename="([^"]+)"|filename=([^;\s]+)/i.exec(cd);
+  const raw = m ? m[1] || m[2] || m[3] : null;
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(String(raw).replace(/"/g, ''));
+  } catch {
+    return String(raw).replace(/"/g, '');
+  }
+}
+
+/** Download all reminders + attendance as JSON (authenticated). */
+export async function exportDatabaseDownload() {
+  try {
+    const res = await api.get('/export', { responseType: 'blob' });
+    const blob = res.data;
+    if (!(blob instanceof Blob)) {
+      throw new Error('Invalid export response');
+    }
+    const cd = res.headers['content-disposition'];
+    const name = filenameFromContentDisposition(cd) || 'heerme-export.json';
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    const data = err?.response?.data;
+    if (data instanceof Blob) {
+      const text = await data.text();
+      let msg = text;
+      try {
+        const j = JSON.parse(text);
+        if (j?.error) msg = j.error;
+      } catch {
+        /* not JSON */
+      }
+      throw new Error(msg || 'Export failed');
+    }
+    throw err;
+  }
+}
+
 export default api;

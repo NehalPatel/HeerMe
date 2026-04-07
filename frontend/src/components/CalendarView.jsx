@@ -13,7 +13,8 @@ import {
   updateReminder,
   updateReminderOccurrence,
   deleteReminder,
-  getAttendance
+  getAttendance,
+  exportDatabaseDownload
 } from '../services/api';
 import Swal from 'sweetalert2';
 import { REMINDER_STATUSES } from '../constants/reminderStatus';
@@ -729,6 +730,7 @@ export default function CalendarView({ onSignOut }) {
   const isInitialCalendarLoadRef = React.useRef(true);
   const rangeSeqRef = React.useRef(0);
   const [rangeLoading, setRangeLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
   const [activeRange, setActiveRange] = useState(() => {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1153,6 +1155,27 @@ export default function CalendarView({ onSignOut }) {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-primary-600 leading-none">HeerMe</h1>
           <div className="flex items-center justify-end flex-none gap-1">
+            <button
+              type="button"
+              disabled={exportLoading}
+              onClick={async () => {
+                try {
+                  setExportLoading(true);
+                  await exportDatabaseDownload();
+                } catch (err) {
+                  const msg =
+                    err?.response?.data?.error ||
+                    err?.message ||
+                    'Could not export data. Try again.';
+                  await Swal.fire({ icon: 'error', title: 'Export failed', text: String(msg) });
+                } finally {
+                  setExportLoading(false);
+                }
+              }}
+              className="px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {exportLoading ? 'Exporting…' : 'Export data'}
+            </button>
             {typeof onSignOut === 'function' ? (
               <button
                 type="button"
