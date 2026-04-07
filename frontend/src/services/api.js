@@ -64,6 +64,9 @@ export const loginWithPin = (pin) =>
 export const verifySession = () => api.get('/auth/session').then((res) => res.data);
 
 export const getReminders = () => api.get('/reminders').then((res) => res.data);
+/** @param {string} q @param {number} [limit] */
+export const searchReminders = (q, limit = 30) =>
+  api.get('/reminders/search', { params: { q, limit } }).then((res) => res.data);
 export const getReminderOccurrences = ({ from, to, max } = {}) =>
   api.get('/reminders/occurrences', { params: { from, to, max } }).then((res) => res.data);
 export const createReminder = (data) => api.post('/reminders', data).then((res) => res.data);

@@ -101,6 +101,45 @@ function getOverrideForOccurrence(reminderDoc, occurrenceStartAt) {
   return arr.find((o) => o?.occurrenceStartAt && new Date(o.occurrenceStartAt).getTime() === key) || null;
 }
 
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Global search: title, description, comments, category, occurrence override comments
+router.get('/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q) {
+      return res.json([]);
+    }
+    if (q.length > 200) {
+      return res.status(400).json({ error: 'Query too long (max 200 characters)' });
+    }
+    let limit = Number(req.query.limit);
+    if (!Number.isFinite(limit)) limit = 30;
+    limit = Math.min(100, Math.max(1, limit));
+
+    const safe = escapeRegex(q);
+    const re = new RegExp(safe, 'i');
+    const reminders = await Reminder.find({
+      $or: [
+        { title: re },
+        { description: re },
+        { comments: re },
+        { category: re },
+        { occurrenceOverrides: { $elemMatch: { comments: re } } }
+      ]
+    })
+      .sort({ createdAt: -1, date: -1 })
+      .limit(limit)
+      .lean();
+
+    res.json(reminders);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/reminders - fetch all reminders
 router.get('/', async (req, res) => {
   try {

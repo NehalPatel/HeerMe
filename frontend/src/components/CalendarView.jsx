@@ -14,7 +14,8 @@ import {
   updateReminderOccurrence,
   deleteReminder,
   getAttendance,
-  exportDatabaseDownload
+  exportDatabaseDownload,
+  searchReminders
 } from '../services/api';
 import Swal from 'sweetalert2';
 import { REMINDER_STATUSES } from '../constants/reminderStatus';
@@ -665,6 +666,44 @@ function AttendanceAnalyticsPanel({
   );
 }
 
+/** Map a reminder document from GET /reminders/search to a calendar-style event for DetailModal. */
+function rawReminderDocumentToSearchEvent(doc) {
+  if (!doc?._id) return null;
+  const idStr = String(doc._id);
+  let startAt = doc.startAt ? new Date(doc.startAt) : null;
+  if (!startAt || Number.isNaN(startAt.getTime())) {
+    const base = doc.date ? new Date(doc.date) : null;
+    if (!base || Number.isNaN(base.getTime())) return null;
+    const [h, m] = String(doc.time || '09:00').split(':').map((x) => Number(x));
+    base.setHours(Number.isFinite(h) ? h : 9, Number.isFinite(m) ? m : 0, 0, 0);
+    startAt = base;
+  }
+  let endAt = doc.endAt ? new Date(doc.endAt) : null;
+  if (!endAt || Number.isNaN(endAt.getTime())) {
+    endAt = new Date(startAt.getTime() + 60 * 60 * 1000);
+  }
+  const hasRec = doc.recurrence && doc.recurrence.freq;
+  const occId = hasRec ? `${idStr}@${startAt.toISOString()}` : idStr;
+  return reminderToEvent({
+    occurrenceId: occId,
+    reminderId: idStr,
+    _id: idStr,
+    title: doc.title,
+    description: doc.description || '',
+    time: doc.time,
+    priority: doc.priority,
+    category: doc.category,
+    status: doc.status,
+    comments: doc.comments || '',
+    startAt: startAt.toISOString(),
+    endAt: endAt.toISOString(),
+    date: doc.date,
+    recurrence: doc.recurrence || null,
+    occurrenceOverrides: doc.occurrenceOverrides,
+    timezone: doc.timezone
+  });
+}
+
 function reminderToEvent(r) {
   const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
   const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
@@ -731,6 +770,11 @@ export default function CalendarView({ onSignOut }) {
   const rangeSeqRef = React.useRef(0);
   const [rangeLoading, setRangeLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchRef = React.useRef(null);
   const [activeRange, setActiveRange] = useState(() => {
     const now = new Date();
     const from = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -848,6 +892,53 @@ export default function CalendarView({ onSignOut }) {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [notificationOpen]);
+
+  React.useEffect(() => {
+    function handleClickOutside(e) {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    }
+    if (searchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [searchOpen]);
+
+  React.useEffect(() => {
+    if (!searchOpen) return;
+    function onKey(e) {
+      if (e.key === 'Escape') setSearchOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [searchOpen]);
+
+  React.useEffect(() => {
+    if (!searchOpen) return;
+    const q = searchQuery.trim();
+    if (q.length < 1) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const data = await searchReminders(q, 40);
+        if (!cancelled) setSearchResults(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error('Search failed', err);
+        if (!cancelled) setSearchResults([]);
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [searchQuery, searchOpen]);
 
   const fetchOccurrences = React.useCallback(async () => {
     const from = toLocalYmd(activeRange.from);
@@ -1185,6 +1276,103 @@ export default function CalendarView({ onSignOut }) {
                 Sign out
               </button>
             ) : null}
+            <div className="relative" ref={searchRef}>
+              <button
+                type="button"
+                onClick={() => setSearchOpen((o) => !o)}
+                className={`relative p-2 rounded-lg focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                  searchOpen ? 'bg-slate-100 text-slate-800' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+                aria-label="Search reminders"
+                aria-expanded={searchOpen}
+                aria-controls="heerme-reminder-search-panel"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+              {searchOpen && (
+                <div
+                  id="heerme-reminder-search-panel"
+                  className="absolute right-0 top-full mt-2 w-[min(calc(100vw-2rem),24rem)] max-h-[min(28rem,75vh)] flex flex-col rounded-xl border border-slate-200 bg-white shadow-lg z-50 overflow-hidden"
+                >
+                  <div className="p-3 border-b border-slate-100">
+                    <label className="sr-only" htmlFor="heerme-global-search-input">
+                      Search reminders
+                    </label>
+                    <input
+                      id="heerme-global-search-input"
+                      type="search"
+                      autoComplete="off"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Title, description, notes, category…"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1.5">Global search across all reminders. Select a result to edit.</p>
+                  </div>
+                  <div className="overflow-y-auto flex-1 min-h-0">
+                    {searchLoading ? (
+                      <div className="flex items-center justify-center py-8 text-sm text-slate-500">
+                        <span className="h-5 w-5 rounded-full border-2 border-primary-500 border-t-transparent animate-spin mr-2" />
+                        Searching…
+                      </div>
+                    ) : searchQuery.trim().length < 1 ? (
+                      <p className="p-4 text-sm text-slate-500 text-center">Type to search</p>
+                    ) : searchResults.length === 0 ? (
+                      <p className="p-4 text-sm text-slate-500 text-center">No reminders match</p>
+                    ) : (
+                      <ul className="divide-y divide-slate-100">
+                        {searchResults.map((doc) => {
+                          const ev = rawReminderDocumentToSearchEvent(doc);
+                          if (!ev) return null;
+                          const priority = ev.extendedProps?.priority || 'medium';
+                          const style = PRIORITY_COLORS[priority] || PRIORITY_COLORS.medium;
+                          const start = ev.start ? new Date(ev.start) : null;
+                          const dateStr = start
+                            ? start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+                            : '';
+                          const timeStr =
+                            ev.extendedProps?.time ||
+                            (start ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
+                          const key = String(doc._id);
+                          return (
+                            <li key={key}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSearchOpen(false);
+                                  setDetailEvent({
+                                    id: ev.id,
+                                    title: ev.title,
+                                    start: ev.start,
+                                    end: ev.end,
+                                    extendedProps: ev.extendedProps
+                                  });
+                                  setDetailModalOpen(true);
+                                }}
+                                className={`w-full text-left px-4 py-3 border-l-4 ${style.border} ${style.bg} hover:opacity-90 transition-opacity`}
+                              >
+                                <span className={`block font-medium text-sm ${style.text}`}>{ev.title}</span>
+                                <span className="block text-xs text-slate-500 mt-0.5">
+                                  {dateStr}
+                                  {timeStr ? ` · ${timeStr}` : ''}
+                                  {doc.recurrence?.freq ? (
+                                    <span className="ml-1 text-[10px] uppercase text-slate-400">Recurring</span>
+                                  ) : null}
+                                </span>
+                                <span className="inline-flex mt-1 text-[10px] text-slate-600">{ev.extendedProps?.category}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="relative" ref={notificationRef}>
               <button
                 type="button"
