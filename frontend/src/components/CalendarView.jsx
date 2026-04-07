@@ -108,9 +108,10 @@ function eachCalendarDay(fromDate, toExclusive, fn) {
   }
 }
 
-function isWeekday(d) {
+/** Mon–Sat working week; Sunday (0) excluded — matches typical college schedule with Saturday on. */
+function isCollegeWorkingDay(d) {
   const day = d.getDay();
-  return day >= 1 && day <= 5;
+  return day >= 1 && day <= 6;
 }
 
 /** Minimum required time on campus (11:30–6:10 or 9:30–4:10): 6h 40m */
@@ -118,6 +119,15 @@ const REQUIRED_STAY_MS = 6 * 60 * 60 * 1000 + 40 * 60 * 1000;
 
 /** Typical / anchor arrival for chart reference line (11:30 local). */
 const REGULAR_CHECK_IN_MINUTES = 11 * 60 + 30;
+
+/** Typical departure for chart reference line (6:10 pm local). */
+const REGULAR_CHECK_OUT_MINUTES = 18 * 60 + 10;
+
+/** Mon 2000-01-03 … Sat (six working days) — placeholder when custom analytics dates are invalid. */
+const ANALYTICS_INVALID_PLACEHOLDER = {
+  from: new Date(2000, 0, 3, 12, 0, 0, 0),
+  toExclusive: new Date(2000, 0, 9, 12, 0, 0, 0)
+};
 
 function formatDurationHhMm(ms) {
   if (!Number.isFinite(ms) || ms <= 0) return '0m';
@@ -142,7 +152,8 @@ function minutesToTimeLabel(totalMin) {
 }
 
 /**
- * Weekday attendance rows in range with in+out; extraMs = time beyond REQUIRED_STAY_MS.
+ * Mon–Sat days in range with college in+out (not leave); Sunday excluded — drives line/bar charts.
+ * extraMs = time beyond REQUIRED_STAY_MS.
  */
 function buildAttendancePresenceSeries(attendanceList, rangeFrom, toExclusive) {
   const byDate = {};
@@ -153,7 +164,7 @@ function buildAttendancePresenceSeries(attendanceList, rangeFrom, toExclusive) {
   const points = [];
   let totalExtraMs = 0;
   eachCalendarDay(rangeFrom, toExclusive, (d) => {
-    if (!isWeekday(d)) return;
+    if (!isCollegeWorkingDay(d)) return;
     const ymd = toLocalYmd(d);
     const row = byDate[ymd];
     if (!row || row.isLeave) return;
@@ -205,7 +216,7 @@ function computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive) {
   let weekdayCount = 0;
   let weekdayLeave = 0;
   eachCalendarDay(rangeFrom, toExclusive, (d) => {
-    if (!isWeekday(d)) return;
+    if (!isCollegeWorkingDay(d)) return;
     weekdayCount += 1;
     const ymd = toLocalYmd(d);
     const row = byDate[ymd];
@@ -239,7 +250,7 @@ function AttendanceTimingCharts({ points }) {
   if (!points.length) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center text-sm text-slate-500">
-        Log college in and out on weekdays in this range to see check-in / check-out trends and extra time.
+        Log college in and out in this range to see check-in / check-out trends and extra time.
       </div>
     );
   }
@@ -251,11 +262,13 @@ function AttendanceTimingCharts({ points }) {
   const ih = vbH - pad.t - pad.b;
 
   const allMins = points.flatMap((p) => [p.checkInMin, p.checkOutMin]);
-  let yMin = Math.min(...allMins, REGULAR_CHECK_IN_MINUTES) - 20;
-  let yMax = Math.max(...allMins, REGULAR_CHECK_IN_MINUTES) + 25;
+  let yMin = Math.min(...allMins, REGULAR_CHECK_IN_MINUTES, REGULAR_CHECK_OUT_MINUTES) - 20;
+  let yMax = Math.max(...allMins, REGULAR_CHECK_IN_MINUTES, REGULAR_CHECK_OUT_MINUTES) + 25;
   if (yMax <= yMin) yMax = yMin + 60;
 
-  const yScale = (m) => pad.t + (1 - (m - yMin) / (yMax - yMin)) * ih;
+  const ySpan = yMax - yMin;
+  /** Earlier times (morning) at top; later times (evening) at bottom — matches clock reading downward. */
+  const yScale = (m) => pad.t + ((m - yMin) / ySpan) * ih;
   const n = points.length;
   const xScale = (i) => (n <= 1 ? pad.l + iw / 2 : pad.l + (i / Math.max(n - 1, 1)) * iw);
 
@@ -266,7 +279,8 @@ function AttendanceTimingCharts({ points }) {
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.checkOutMin)}`)
     .join(' ');
 
-  const refY = yScale(REGULAR_CHECK_IN_MINUTES);
+  const refInY = yScale(REGULAR_CHECK_IN_MINUTES);
+  const refOutY = yScale(REGULAR_CHECK_OUT_MINUTES);
   const tickCount = 5;
   const yTicks = Array.from({ length: tickCount }, (_, t) => yMin + (t / (tickCount - 1)) * (yMax - yMin));
 
@@ -287,8 +301,9 @@ function AttendanceTimingCharts({ points }) {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <h3 className="text-sm font-semibold text-slate-800">Check-in &amp; check-out by day</h3>
         <p className="text-xs text-slate-500 mt-1">
-          Solid line = college in, dashed = out. Orange horizontal line = typical arrival <strong>11:30</strong> (early
-          exam duty shows lower on the chart).
+          Solid line = college in, dashed gray = out. <strong className="text-amber-700">Amber</strong> dashed = typical in{' '}
+          <strong>11:30</strong>; <strong className="text-indigo-700">indigo</strong> dashed = typical out{' '}
+          <strong>6:10 pm</strong>. Morning at top, evening at bottom; early exam duty shifts the in line upward.
         </p>
         <div className="mt-3 w-full overflow-x-auto">
           <svg
@@ -323,9 +338,9 @@ function AttendanceTimingCharts({ points }) {
             ))}
             <line
               x1={pad.l}
-              y1={refY}
+              y1={refInY}
               x2={pad.l + iw}
-              y2={refY}
+              y2={refInY}
               className="stroke-amber-500"
               strokeWidth="1.5"
               strokeDasharray="6 4"
@@ -333,11 +348,29 @@ function AttendanceTimingCharts({ points }) {
             />
             <text
               x={pad.l + iw}
-              y={refY - 6}
+              y={refInY - 6}
               textAnchor="end"
               className="fill-amber-700 text-[10px] font-medium"
             >
               11:30 typical in
+            </text>
+            <line
+              x1={pad.l}
+              y1={refOutY}
+              x2={pad.l + iw}
+              y2={refOutY}
+              className="stroke-indigo-500"
+              strokeWidth="1.5"
+              strokeDasharray="6 4"
+              opacity="0.9"
+            />
+            <text
+              x={pad.l + iw}
+              y={refOutY + 12}
+              textAnchor="end"
+              className="fill-indigo-700 text-[10px] font-medium"
+            >
+              6:10 pm typical out
             </text>
             <path d={pathIn} fill="none" className="stroke-primary-500" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
             <path
@@ -393,7 +426,11 @@ function AttendanceTimingCharts({ points }) {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <span className="w-4 h-0 border-t-2 border-amber-500 border-dashed" />
-            11:30 reference
+            11:30 in
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-4 h-0 border-t-2 border-indigo-500 border-dashed" />
+            6:10 pm out
           </span>
         </div>
       </div>
@@ -402,14 +439,14 @@ function AttendanceTimingCharts({ points }) {
         <h3 className="text-sm font-semibold text-slate-800">Extra time beyond required 6h 40m</h3>
         <p className="text-xs text-slate-500 mt-1">
           Required presence = <strong>6h 40m</strong> (e.g. 11:30–6:10 or 9:30–4:10). Bars show how much longer you stayed
-          each weekday; hover a bar or point for details.
+          each Mon–Sat day; hover a bar or point for details.
         </p>
         <div className="mt-3 w-full overflow-x-auto">
           <svg
             viewBox={`0 0 ${barVbW} ${barVbH}`}
             className="w-full min-w-[320px] h-[200px] sm:h-[240px]"
             role="img"
-            aria-label="Bar chart of extra minutes per weekday"
+            aria-label="Bar chart of extra minutes per Mon–Sat day"
           >
             <line
               x1={bPad.l}
@@ -457,7 +494,20 @@ function AttendanceTimingCharts({ points }) {
   );
 }
 
-function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rangeLoading }) {
+function AttendanceAnalyticsPanel({
+  rangeFrom,
+  toExclusive,
+  attendanceList,
+  rangeLoading,
+  useCalendarRange,
+  onUseCalendarRangeChange,
+  customFromYmd,
+  customToInclusiveYmd,
+  onCustomFromYmdChange,
+  onCustomToInclusiveYmdChange,
+  onApplyCurrentCalendarToCustom,
+  customRangeInvalid
+}) {
   const stats = useMemo(
     () => computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive),
     [attendanceList, rangeFrom, toExclusive]
@@ -472,12 +522,14 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
   return (
     <div className="px-1 py-2 sm:px-2">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-        <div>
+        <div className="min-w-0 flex-1">
           <h2 className="text-lg font-semibold text-slate-800">Attendance analytics</h2>
           <p className="text-sm text-slate-500 mt-0.5">
             College in/out for{' '}
-            <span className="font-medium text-slate-700">{title}</span>
-            <span className="text-slate-400"> (visible calendar range)</span>
+            <span className="font-medium text-slate-700">{customRangeInvalid ? '—' : title}</span>
+            <span className="text-slate-400">
+              {useCalendarRange ? ' (matches Calendar tab)' : ' (custom range)'}
+            </span>
           </p>
         </div>
         {rangeLoading ? (
@@ -490,10 +542,73 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
           </span>
         ) : null}
       </div>
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 sm:p-4 mb-4">
+        <p className="text-xs font-medium text-slate-600 mb-2">Date range for charts &amp; summaries</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 shrink-0">
+            <input
+              type="radio"
+              name="analytics-range-mode"
+              className="text-primary-600 focus:ring-primary-500"
+              checked={useCalendarRange}
+              onChange={() => onUseCalendarRangeChange(true)}
+            />
+            Match calendar view
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700 shrink-0">
+            <input
+              type="radio"
+              name="analytics-range-mode"
+              className="text-primary-600 focus:ring-primary-500"
+              checked={!useCalendarRange}
+              onChange={() => onUseCalendarRangeChange(false)}
+            />
+            Custom range
+          </label>
+          {!useCalendarRange ? (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs text-slate-600">
+                  <span className="block mb-0.5">From</span>
+                  <input
+                    type="date"
+                    value={customFromYmd}
+                    onChange={(e) => onCustomFromYmdChange(e.target.value)}
+                    className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500"
+                  />
+                </label>
+                <label className="text-xs text-slate-600">
+                  <span className="block mb-0.5">To</span>
+                  <input
+                    type="date"
+                    value={customToInclusiveYmd}
+                    onChange={(e) => onCustomToInclusiveYmdChange(e.target.value)}
+                    className="px-2 py-1.5 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary-500"
+                  />
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={onApplyCurrentCalendarToCustom}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 px-2 py-1.5 rounded-lg border border-primary-200 bg-white hover:bg-primary-50"
+              >
+                Fill from calendar
+              </button>
+            </>
+          ) : null}
+        </div>
+        {customRangeInvalid ? (
+          <p className="text-xs text-amber-800 mt-2 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+            Choose a start and end date (start ≤ end). End date is <strong>inclusive</strong>.
+          </p>
+        ) : null}
+      </div>
+
       <p className="text-xs text-slate-500 mb-4">
         <strong>Required presence</strong> is <strong>6h 40m</strong> per day (same span as 11:30–6:10 or 9:30–4:10).
         <strong> Extra time</strong> is anything beyond that on days with both in and out logged. Attendance % counts
-        weekdays (Mon–Fri): present = both times logged; leave days excluded from the expected count.
+        Mon–Sat: present = both times logged; leave days excluded from the expected count. Sunday is off.
       </p>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -502,7 +617,7 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
             {stats.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}
             <span className="text-base font-normal text-slate-500 ml-1">h</span>
           </p>
-          <p className="text-xs text-slate-500 mt-2">Sum of (out − in) for weekdays with both times.</p>
+          <p className="text-xs text-slate-500 mt-2">Sum of (out − in) for Mon–Sat days with both times.</p>
         </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
           <p className="text-xs font-medium text-emerald-800 uppercase tracking-wide">Extra beyond 6h 40m</p>
@@ -511,7 +626,7 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
           </p>
           <p className="text-xs text-emerald-800/90 mt-2">
             {daysWithExtra > 0
-              ? `${daysWithExtra} weekday${daysWithExtra === 1 ? '' : 's'} with extra time (${points.length} with full logs).`
+              ? `${daysWithExtra} day${daysWithExtra === 1 ? '' : 's'} with extra time (${points.length} with full logs).`
               : points.length > 0
                 ? 'No extra time in this range — within or under 6h 40m each logged day.'
                 : 'Log in & out to compute extra time.'}
@@ -523,22 +638,26 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
             {stats.attendancePct != null ? `${stats.attendancePct}%` : '—'}
           </p>
           <p className="text-xs text-slate-500 mt-2">
-            {stats.presentWeekdays} present / {stats.expectedWeekdays} expected weekdays
+            {stats.presentWeekdays} present / {stats.expectedWeekdays} expected (Mon–Sat)
             {stats.weekdayLeave > 0 ? ` (${stats.weekdayLeave} leave)` : ''}
           </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Weekdays in range</p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Mon–Sat days in range</p>
           <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">{stats.weekdayCount}</p>
           <p className="text-xs text-slate-500 mt-2">
-            Use the Calendar tab to change month or view; stats follow the same range as the grid.
+            {useCalendarRange
+              ? 'Use the Calendar tab to change the grid range, or switch to Custom range above.'
+              : 'Counts Mon–Sat in the From–To dates above (end date inclusive); Sunday excluded.'}
           </p>
         </div>
       </div>
 
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-slate-800 mb-1">Timing &amp; extra hours</h3>
-        <p className="text-xs text-slate-500 mb-4">Charts use only weekdays with college in and out recorded (not leave).</p>
+        <p className="text-xs text-slate-500 mb-4">
+          Charts and summaries use <strong>Mon–Sat</strong> only (Saturday included). <strong>Sunday</strong> is treated as weekly off and omitted.
+        </p>
         <AttendanceTimingCharts points={points} />
       </div>
     </div>
@@ -617,6 +736,96 @@ export default function CalendarView({ onSignOut }) {
     return { from, to };
   });
 
+  const [analyticsUseCalendarRange, setAnalyticsUseCalendarRange] = useState(true);
+  const [analyticsFromYmd, setAnalyticsFromYmd] = useState('');
+  const [analyticsToInclusiveYmd, setAnalyticsToInclusiveYmd] = useState('');
+  const [analyticsCustomList, setAnalyticsCustomList] = useState([]);
+  const [analyticsCustomLoading, setAnalyticsCustomLoading] = useState(false);
+
+  const analyticsCustomKey = useMemo(() => {
+    if (analyticsUseCalendarRange) return '';
+    const f = analyticsFromYmd;
+    const t = analyticsToInclusiveYmd;
+    if (!f || !t || !/^\d{4}-\d{2}-\d{2}$/.test(f) || !/^\d{4}-\d{2}-\d{2}$/.test(t)) return '';
+    if (f > t) return '';
+    return `${f}|${t}`;
+  }, [analyticsUseCalendarRange, analyticsFromYmd, analyticsToInclusiveYmd]);
+
+  const analyticsEffectiveRange = useMemo(() => {
+    if (analyticsUseCalendarRange) return { from: activeRange.from, toExclusive: activeRange.to };
+    if (!analyticsCustomKey) return null;
+    const [fromStr, toIncStr] = analyticsCustomKey.split('|');
+    const fromD = new Date(`${fromStr}T12:00:00`);
+    const toIncD = new Date(`${toIncStr}T12:00:00`);
+    return { from: fromD, toExclusive: addCalendarDays(toIncD, 1) };
+  }, [analyticsUseCalendarRange, analyticsCustomKey, activeRange.from, activeRange.to]);
+
+  const analyticsCustomRangeInvalid = !analyticsUseCalendarRange && !analyticsCustomKey;
+
+  React.useEffect(() => {
+    if (analyticsUseCalendarRange) {
+      setAnalyticsCustomList([]);
+      setAnalyticsCustomLoading(false);
+      return;
+    }
+    if (!analyticsCustomKey) {
+      setAnalyticsCustomList([]);
+      setAnalyticsCustomLoading(false);
+      return;
+    }
+    const [fromStr, toIncStr] = analyticsCustomKey.split('|');
+    const toExclusiveYmd = toLocalYmd(addCalendarDays(new Date(`${toIncStr}T12:00:00`), 1));
+    let cancelled = false;
+    setAnalyticsCustomLoading(true);
+    (async () => {
+      try {
+        const rows = await getAttendance({ from: fromStr, to: toExclusiveYmd });
+        if (!cancelled) setAnalyticsCustomList(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        console.error('Failed to load attendance for analytics range', err);
+        if (!cancelled) setAnalyticsCustomList([]);
+      } finally {
+        if (!cancelled) setAnalyticsCustomLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [analyticsUseCalendarRange, analyticsCustomKey]);
+
+  const analyticsRangeResolved = useMemo(() => {
+    if (analyticsEffectiveRange) return analyticsEffectiveRange;
+    if (analyticsCustomRangeInvalid) return ANALYTICS_INVALID_PLACEHOLDER;
+    return activeRange;
+  }, [analyticsEffectiveRange, analyticsCustomRangeInvalid, activeRange]);
+
+  const analyticsPanelList = analyticsUseCalendarRange ? attendanceList : analyticsCustomList;
+  const analyticsPanelListForStats = analyticsCustomRangeInvalid ? [] : analyticsPanelList;
+  const analyticsPanelLoading = analyticsUseCalendarRange ? rangeLoading : analyticsCustomLoading;
+
+  const handleAnalyticsUseCalendarRangeChange = React.useCallback(
+    (useCal) => {
+      setAnalyticsUseCalendarRange(useCal);
+      if (!useCal) {
+        setAnalyticsFromYmd((prevFrom) => {
+          const seedFrom = toLocalYmd(activeRange.from);
+          return prevFrom || seedFrom;
+        });
+        setAnalyticsToInclusiveYmd((prevTo) => {
+          const seedTo = toLocalYmd(addCalendarDays(activeRange.to, -1));
+          return prevTo || seedTo;
+        });
+      }
+    },
+    [activeRange.from, activeRange.to]
+  );
+
+  const handleApplyCurrentCalendarToCustom = React.useCallback(() => {
+    setAnalyticsUseCalendarRange(false);
+    setAnalyticsFromYmd(toLocalYmd(activeRange.from));
+    setAnalyticsToInclusiveYmd(toLocalYmd(addCalendarDays(activeRange.to, -1)));
+  }, [activeRange.from, activeRange.to]);
+
   React.useEffect(() => {
     function onResize() {
       setIsMobile(window.innerWidth < 640);
@@ -665,7 +874,17 @@ export default function CalendarView({ onSignOut }) {
     } catch (err) {
       console.error('Failed to load attendance', err);
     }
-  }, [activeRange.from, activeRange.to]);
+    if (!analyticsUseCalendarRange && analyticsCustomKey) {
+      const [cf, toIncStr] = analyticsCustomKey.split('|');
+      const toExclusiveYmd = toLocalYmd(addCalendarDays(new Date(`${toIncStr}T12:00:00`), 1));
+      try {
+        const rowsCustom = await getAttendance({ from: cf, to: toExclusiveYmd });
+        setAnalyticsCustomList(Array.isArray(rowsCustom) ? rowsCustom : []);
+      } catch (err) {
+        console.error('Failed to refresh analytics attendance', err);
+      }
+    }
+  }, [activeRange.from, activeRange.to, analyticsUseCalendarRange, analyticsCustomKey]);
 
   React.useEffect(() => {
     const seq = ++rangeSeqRef.current;
@@ -1117,10 +1336,18 @@ export default function CalendarView({ onSignOut }) {
 
             {mainTab === 'analytics' ? (
               <AttendanceAnalyticsPanel
-                rangeFrom={activeRange.from}
-                toExclusive={activeRange.to}
-                attendanceList={attendanceList}
-                rangeLoading={rangeLoading}
+                rangeFrom={analyticsRangeResolved.from}
+                toExclusive={analyticsRangeResolved.toExclusive}
+                attendanceList={analyticsPanelListForStats}
+                rangeLoading={analyticsPanelLoading}
+                useCalendarRange={analyticsUseCalendarRange}
+                onUseCalendarRangeChange={handleAnalyticsUseCalendarRangeChange}
+                customFromYmd={analyticsFromYmd}
+                customToInclusiveYmd={analyticsToInclusiveYmd}
+                onCustomFromYmdChange={setAnalyticsFromYmd}
+                onCustomToInclusiveYmdChange={setAnalyticsToInclusiveYmd}
+                onApplyCurrentCalendarToCustom={handleApplyCurrentCalendarToCustom}
+                customRangeInvalid={analyticsCustomRangeInvalid}
               />
             ) : null}
           </div>
