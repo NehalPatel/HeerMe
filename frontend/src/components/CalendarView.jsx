@@ -113,6 +113,74 @@ function isWeekday(d) {
   return day >= 1 && day <= 5;
 }
 
+/** Minimum required time on campus (11:30–6:10 or 9:30–4:10): 6h 40m */
+const REQUIRED_STAY_MS = 6 * 60 * 60 * 1000 + 40 * 60 * 1000;
+
+/** Typical / anchor arrival for chart reference line (11:30 local). */
+const REGULAR_CHECK_IN_MINUTES = 11 * 60 + 30;
+
+function formatDurationHhMm(ms) {
+  if (!Number.isFinite(ms) || ms <= 0) return '0m';
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
+
+function formatTimeHm(d) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function minutesToTimeLabel(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  const d = new Date(2000, 0, 1, h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * Weekday attendance rows in range with in+out; extraMs = time beyond REQUIRED_STAY_MS.
+ */
+function buildAttendancePresenceSeries(attendanceList, rangeFrom, toExclusive) {
+  const byDate = {};
+  for (const row of attendanceList) {
+    const k = normalizeAttendanceYmd(row?.calendarDate);
+    if (k) byDate[k] = row;
+  }
+  const points = [];
+  let totalExtraMs = 0;
+  eachCalendarDay(rangeFrom, toExclusive, (d) => {
+    if (!isWeekday(d)) return;
+    const ymd = toLocalYmd(d);
+    const row = byDate[ymd];
+    if (!row || row.isLeave) return;
+    if (!row.checkInAt || !row.checkOutAt) return;
+    const inD = new Date(row.checkInAt);
+    const outD = new Date(row.checkOutAt);
+    if (Number.isNaN(inD.getTime()) || Number.isNaN(outD.getTime()) || outD <= inD) return;
+    const stayMs = outD.getTime() - inD.getTime();
+    const extraMs = Math.max(0, stayMs - REQUIRED_STAY_MS);
+    totalExtraMs += extraMs;
+    points.push({
+      ymd,
+      sortKey: ymd,
+      labelShort: d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      weekdayShort: d.toLocaleDateString(undefined, { weekday: 'short' }),
+      checkIn: inD,
+      checkOut: outD,
+      checkInMin: inD.getHours() * 60 + inD.getMinutes(),
+      checkOutMin: outD.getHours() * 60 + outD.getMinutes(),
+      stayMs,
+      extraMs
+    });
+  });
+  points.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return { points, totalExtraMs };
+}
+
 function formatAnalyticsRangeLabel(fromDate, toExclusive) {
   const endIncl = addCalendarDays(toExclusive, -1);
   if (
@@ -167,11 +235,238 @@ function computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive) {
   };
 }
 
+function AttendanceTimingCharts({ points }) {
+  if (!points.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center text-sm text-slate-500">
+        Log college in and out on weekdays in this range to see check-in / check-out trends and extra time.
+      </div>
+    );
+  }
+
+  const vbW = 720;
+  const vbH = 300;
+  const pad = { l: 56, r: 16, t: 20, b: 56 };
+  const iw = vbW - pad.l - pad.r;
+  const ih = vbH - pad.t - pad.b;
+
+  const allMins = points.flatMap((p) => [p.checkInMin, p.checkOutMin]);
+  let yMin = Math.min(...allMins, REGULAR_CHECK_IN_MINUTES) - 20;
+  let yMax = Math.max(...allMins, REGULAR_CHECK_IN_MINUTES) + 25;
+  if (yMax <= yMin) yMax = yMin + 60;
+
+  const yScale = (m) => pad.t + (1 - (m - yMin) / (yMax - yMin)) * ih;
+  const n = points.length;
+  const xScale = (i) => (n <= 1 ? pad.l + iw / 2 : pad.l + (i / Math.max(n - 1, 1)) * iw);
+
+  const pathIn = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.checkInMin)}`)
+    .join(' ');
+  const pathOut = points
+    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(p.checkOutMin)}`)
+    .join(' ');
+
+  const refY = yScale(REGULAR_CHECK_IN_MINUTES);
+  const tickCount = 5;
+  const yTicks = Array.from({ length: tickCount }, (_, t) => yMin + (t / (tickCount - 1)) * (yMax - yMin));
+
+  const labelStep = Math.max(1, Math.ceil(n / 7));
+
+  const maxExtra = Math.max(...points.map((p) => p.extraMs), 1);
+  const barVbW = 720;
+  const barVbH = 260;
+  const bPad = { l: 56, r: 16, t: 14, b: 56 };
+  const biw = barVbW - bPad.l - bPad.r;
+  const bih = barVbH - bPad.t - bPad.b;
+  const gap = n > 12 ? 2 : 4;
+  const barSlot = biw / n;
+  const barW = Math.max(4, Math.min(40, barSlot - gap));
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-800">Check-in &amp; check-out by day</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Solid line = college in, dashed = out. Orange horizontal line = typical arrival <strong>11:30</strong> (early
+          exam duty shows lower on the chart).
+        </p>
+        <div className="mt-3 w-full overflow-x-auto">
+          <svg
+            viewBox={`0 0 ${vbW} ${vbH}`}
+            className="w-full min-w-[320px] h-[220px] sm:h-[280px]"
+            role="img"
+            aria-label="Line chart of check-in and check-out times by date"
+          >
+            <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + ih} className="stroke-slate-200" strokeWidth="1" />
+            <line
+              x1={pad.l}
+              y1={pad.t + ih}
+              x2={pad.l + iw}
+              y2={pad.t + ih}
+              className="stroke-slate-200"
+              strokeWidth="1"
+            />
+            {yTicks.map((m) => (
+              <g key={m}>
+                <line
+                  x1={pad.l}
+                  y1={yScale(m)}
+                  x2={pad.l + iw}
+                  y2={yScale(m)}
+                  className="stroke-slate-100"
+                  strokeWidth="1"
+                />
+                <text x={pad.l - 8} y={yScale(m)} textAnchor="end" dominantBaseline="middle" className="fill-slate-400 text-[11px]">
+                  {minutesToTimeLabel(Math.round(m))}
+                </text>
+              </g>
+            ))}
+            <line
+              x1={pad.l}
+              y1={refY}
+              x2={pad.l + iw}
+              y2={refY}
+              className="stroke-amber-500"
+              strokeWidth="1.5"
+              strokeDasharray="6 4"
+              opacity="0.9"
+            />
+            <text
+              x={pad.l + iw}
+              y={refY - 6}
+              textAnchor="end"
+              className="fill-amber-700 text-[10px] font-medium"
+            >
+              11:30 typical in
+            </text>
+            <path d={pathIn} fill="none" className="stroke-primary-500" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+            <path
+              d={pathOut}
+              fill="none"
+              className="stroke-slate-500"
+              strokeWidth="2"
+              strokeDasharray="5 4"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              opacity="0.85"
+            />
+            {points.map((p, i) => (
+              <g key={p.ymd}>
+                <title>
+                  {p.weekdayShort} {p.labelShort}: in {formatTimeHm(p.checkIn)}, out {formatTimeHm(p.checkOut)} — stayed{' '}
+                  {formatDurationHhMm(p.stayMs)}
+                  {p.extraMs > 0 ? `, extra ${formatDurationHhMm(p.extraMs)}` : ''}
+                </title>
+                <circle cx={xScale(i)} cy={yScale(p.checkInMin)} r="5" className="fill-primary-500 stroke-white" strokeWidth="2" />
+                <circle
+                  cx={xScale(i)}
+                  cy={yScale(p.checkOutMin)}
+                  r="4"
+                  className="fill-slate-500 stroke-white opacity-90"
+                  strokeWidth="2"
+                />
+              </g>
+            ))}
+            {points.map((p, i) =>
+              i % labelStep === 0 || i === n - 1 ? (
+                <text
+                  key={`${p.ymd}-lx`}
+                  x={xScale(i)}
+                  y={vbH - 12}
+                  textAnchor="middle"
+                  className="fill-slate-500 text-[10px]"
+                >
+                  {p.labelShort}
+                </text>
+              ) : null
+            )}
+          </svg>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-0.5 bg-primary-500 rounded" />
+            College in
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-3 h-0.5 border-t-2 border-dotted border-slate-500" />
+            College out
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-4 h-0 border-t-2 border-amber-500 border-dashed" />
+            11:30 reference
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-800">Extra time beyond required 6h 40m</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          Required presence = <strong>6h 40m</strong> (e.g. 11:30–6:10 or 9:30–4:10). Bars show how much longer you stayed
+          each weekday; hover a bar or point for details.
+        </p>
+        <div className="mt-3 w-full overflow-x-auto">
+          <svg
+            viewBox={`0 0 ${barVbW} ${barVbH}`}
+            className="w-full min-w-[320px] h-[200px] sm:h-[240px]"
+            role="img"
+            aria-label="Bar chart of extra minutes per weekday"
+          >
+            <line
+              x1={bPad.l}
+              y1={bPad.t + bih}
+              x2={bPad.l + biw}
+              y2={bPad.t + bih}
+              className="stroke-slate-200"
+              strokeWidth="1"
+            />
+            <line x1={bPad.l} y1={bPad.t} x2={bPad.l} y2={bPad.t + bih} className="stroke-slate-200" strokeWidth="1" />
+            <text x={bPad.l - 6} y={bPad.t + 8} textAnchor="end" className="fill-slate-400 text-[10px]">
+              Extra
+            </text>
+            {points.map((p, i) => {
+              const cx = bPad.l + i * barSlot + barSlot / 2;
+              const h = p.extraMs > 0 ? (p.extraMs / maxExtra) * bih : 2;
+              const y = bPad.t + bih - h;
+              const fillClass = p.extraMs > 0 ? 'fill-emerald-500' : 'fill-slate-200';
+              return (
+                <g key={`bar-${p.ymd}`}>
+                  <title>
+                    {p.weekdayShort} {p.labelShort}: extra {formatDurationHhMm(p.extraMs)} (stayed {formatDurationHhMm(p.stayMs)} total)
+                  </title>
+                  <rect x={cx - barW / 2} y={y} width={barW} height={Math.max(h, 2)} rx="3" className={fillClass} opacity={p.extraMs > 0 ? 0.92 : 0.55} />
+                </g>
+              );
+            })}
+            {points.map((p, i) =>
+              i % labelStep === 0 || i === n - 1 ? (
+                <text
+                  key={`${p.ymd}-bx`}
+                  x={bPad.l + i * barSlot + barSlot / 2}
+                  y={barVbH - 10}
+                  textAnchor="middle"
+                  className="fill-slate-500 text-[10px]"
+                >
+                  {p.labelShort}
+                </text>
+              ) : null
+            )}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rangeLoading }) {
   const stats = useMemo(
     () => computeAttendanceAnalytics(attendanceList, rangeFrom, toExclusive),
     [attendanceList, rangeFrom, toExclusive]
   );
+  const { points, totalExtraMs } = useMemo(
+    () => buildAttendancePresenceSeries(attendanceList, rangeFrom, toExclusive),
+    [attendanceList, rangeFrom, toExclusive]
+  );
+  const daysWithExtra = useMemo(() => points.reduce((acc, p) => acc + (p.extraMs > 0 ? 1 : 0), 0), [points]);
   const title = formatAnalyticsRangeLabel(rangeFrom, toExclusive);
 
   return (
@@ -196,17 +491,31 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
         ) : null}
       </div>
       <p className="text-xs text-slate-500 mb-4">
-        Percentage counts weekdays (Mon–Fri) in this range: present means both in and out logged; leave days
-        are excluded from the expected count.
+        <strong>Required presence</strong> is <strong>6h 40m</strong> per day (same span as 11:30–6:10 or 9:30–4:10).
+        <strong> Extra time</strong> is anything beyond that on days with both in and out logged. Attendance % counts
+        weekdays (Mon–Fri): present = both times logged; leave days excluded from the expected count.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total hours on campus</p>
           <p className="text-2xl font-semibold text-slate-900 mt-1 tabular-nums">
             {stats.totalHours.toLocaleString(undefined, { maximumFractionDigits: 1 })}
             <span className="text-base font-normal text-slate-500 ml-1">h</span>
           </p>
-          <p className="text-xs text-slate-500 mt-2">Sum of (out − in) per weekday with both times.</p>
+          <p className="text-xs text-slate-500 mt-2">Sum of (out − in) for weekdays with both times.</p>
+        </div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+          <p className="text-xs font-medium text-emerald-800 uppercase tracking-wide">Extra beyond 6h 40m</p>
+          <p className="text-2xl font-semibold text-emerald-900 mt-1 tabular-nums">
+            {formatDurationHhMm(totalExtraMs)}
+          </p>
+          <p className="text-xs text-emerald-800/90 mt-2">
+            {daysWithExtra > 0
+              ? `${daysWithExtra} weekday${daysWithExtra === 1 ? '' : 's'} with extra time (${points.length} with full logs).`
+              : points.length > 0
+                ? 'No extra time in this range — within or under 6h 40m each logged day.'
+                : 'Log in & out to compute extra time.'}
+          </p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Attendance</p>
@@ -225,6 +534,12 @@ function AttendanceAnalyticsPanel({ rangeFrom, toExclusive, attendanceList, rang
             Use the Calendar tab to change month or view; stats follow the same range as the grid.
           </p>
         </div>
+      </div>
+
+      <div className="mt-8">
+        <h3 className="text-sm font-semibold text-slate-800 mb-1">Timing &amp; extra hours</h3>
+        <p className="text-xs text-slate-500 mb-4">Charts use only weekdays with college in and out recorded (not leave).</p>
+        <AttendanceTimingCharts points={points} />
       </div>
     </div>
   );
