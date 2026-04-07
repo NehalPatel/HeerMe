@@ -1310,7 +1310,10 @@ export default function CalendarView({ onSignOut }) {
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       autoFocus
                     />
-                    <p className="text-[11px] text-slate-500 mt-1.5">Global search across all reminders. Select a result to edit.</p>
+                    <p className="text-[11px] text-slate-500 mt-1.5">
+                      Matches <strong>title</strong>, <strong>description</strong>, <strong>comments</strong> (task and recurring
+                      occurrence notes), <strong>category</strong>, and <strong>priority</strong>. Select a result to edit.
+                    </p>
                   </div>
                   <div className="overflow-y-auto flex-1 min-h-0">
                     {searchLoading ? (

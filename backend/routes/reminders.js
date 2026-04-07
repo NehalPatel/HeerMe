@@ -105,7 +105,7 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Global search: title, description, comments, category, occurrence override comments
+// Global search: unified text blob (title, description, task comments, category, priority, occurrence comments)
 router.get('/search', async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
@@ -120,19 +120,50 @@ router.get('/search', async (req, res) => {
     limit = Math.min(100, Math.max(1, limit));
 
     const safe = escapeRegex(q);
-    const re = new RegExp(safe, 'i');
-    const reminders = await Reminder.find({
-      $or: [
-        { title: re },
-        { description: re },
-        { comments: re },
-        { category: re },
-        { occurrenceOverrides: { $elemMatch: { comments: re } } }
-      ]
-    })
-      .sort({ createdAt: -1, date: -1 })
-      .limit(limit)
-      .lean();
+
+    const reminders = await Reminder.aggregate([
+      {
+        $addFields: {
+          _searchBlob: {
+            $concat: [
+              { $ifNull: ['$title', ''] },
+              '\n',
+              { $ifNull: ['$description', ''] },
+              '\n',
+              { $ifNull: ['$comments', ''] },
+              '\n',
+              { $ifNull: ['$category', ''] },
+              '\n',
+              { $ifNull: ['$priority', ''] },
+              '\n',
+              {
+                $reduce: {
+                  input: { $ifNull: ['$occurrenceOverrides', []] },
+                  initialValue: '',
+                  in: {
+                    $concat: [
+                      '$$value',
+                      { $ifNull: ['$$this.comments', ''] },
+                      '\n'
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        $match: {
+          $expr: {
+            $regexMatch: { input: '$_searchBlob', regex: safe, options: 'i' }
+          }
+        }
+      },
+      { $sort: { createdAt: -1, date: -1 } },
+      { $limit: limit },
+      { $project: { _searchBlob: 0 } }
+    ]).exec();
 
     res.json(reminders);
   } catch (err) {
