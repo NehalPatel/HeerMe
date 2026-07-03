@@ -374,7 +374,7 @@ export default function AcademicLectureModal({
             disabled={saving}
             className="flex-1 py-2.5 bg-primary-500 text-white rounded-lg font-medium hover:bg-primary-600 disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save lecture'}
+            {saving ? 'Saving…' : lectureToEdit ? 'Update lecture' : 'Save lecture'}
           </button>
         </div>
       </form>

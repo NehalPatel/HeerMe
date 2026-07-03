@@ -21,6 +21,7 @@ import {
   exportDatabaseDownload,
   searchReminders,
   createAcademicLecture,
+  updateAcademicLecture,
   getAcademicLectures
 } from '../services/api';
 import Swal from 'sweetalert2';
@@ -796,6 +797,7 @@ export default function CalendarView({ onSignOut }) {
   const lastRangeKeyRef = React.useRef('');
   const [dayChoiceOpen, setDayChoiceOpen] = useState(false);
   const [lectureModalOpen, setLectureModalOpen] = useState(false);
+  const [lectureToEdit, setLectureToEdit] = useState(null);
   const [lectureSuggestions, setLectureSuggestions] = useState(null);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   /** YYYY-MM-DD for attendance modal only — avoids clearing when day-choice closes. */
@@ -1187,7 +1189,15 @@ export default function CalendarView({ onSignOut }) {
           ${lec?.deliveryMethod ? `<p><strong>Method:</strong> ${lec.deliveryMethod}</p>` : ''}
           ${lec?.numberOfStudents != null ? `<p><strong>Students:</strong> ${lec.numberOfStudents}</p>` : ''}
           ${lec?.remarks ? `<p><strong>Remarks:</strong> ${lec.remarks}</p>` : ''}
-        </div>`
+        </div>`,
+        showCancelButton: true,
+        confirmButtonText: 'Edit lecture',
+        cancelButtonText: 'Close'
+      }).then((result) => {
+        if (result.isConfirmed && lec) {
+          setLectureToEdit(lec);
+          setLectureModalOpen(true);
+        }
       });
       return;
     }
@@ -1230,35 +1240,50 @@ export default function CalendarView({ onSignOut }) {
     };
   }, [lectureModalOpen]);
 
-  const handleSaveLecture = async (form) => {
+  const refreshLecturesInView = async () => {
+    const from = toLocalYmd(activeRange.from);
+    const to = toLocalYmd(activeRange.to);
+    if (from && to && from < to) {
+      const lecRows = await getAcademicLectures({ from, to });
+      setLectures(Array.isArray(lecRows) ? lecRows : []);
+    }
+  };
+
+  const handleSaveLecture = async (form, editingLecture = null) => {
+    const payload = {
+      academicYear: form.academicYear,
+      className: form.className,
+      divisions: form.divisions,
+      subject: form.subject,
+      semester: form.semester,
+      lectureDate: form.lectureDate || selectedDayStr,
+      startTime: form.startTime,
+      endTime: form.endTime,
+      unitNoAndName: form.unitNoAndName,
+      topic: form.topic,
+      reference: form.reference,
+      deliveryMethod: form.deliveryMethod,
+      numberOfStudents: form.numberOfStudents,
+      remarks: form.remarks
+    };
+    const lectureId = editingLecture?.id || editingLecture?._id;
+    const isEdit = Boolean(lectureId);
+
     try {
-      await createAcademicLecture({
-        academicYear: form.academicYear,
-        className: form.className,
-        divisions: form.divisions,
-        subject: form.subject,
-        semester: form.semester,
-        lectureDate: selectedDayStr || form.lectureDate,
-        startTime: form.startTime,
-        endTime: form.endTime,
-        unitNoAndName: form.unitNoAndName,
-        topic: form.topic,
-        reference: form.reference,
-        deliveryMethod: form.deliveryMethod,
-        numberOfStudents: form.numberOfStudents,
-        remarks: form.remarks
-      });
-      saveLastLectureFields(form);
-      const from = toLocalYmd(activeRange.from);
-      const to = toLocalYmd(activeRange.to);
-      if (from && to && from < to) {
-        const lecRows = await getAcademicLectures({ from, to });
-        setLectures(Array.isArray(lecRows) ? lecRows : []);
+      if (isEdit) {
+        await updateAcademicLecture(lectureId, payload);
+      } else {
+        await createAcademicLecture(payload);
+        saveLastLectureFields(form);
       }
+      await refreshLecturesInView();
+      setLectureToEdit(null);
       await Swal.fire({
         icon: 'success',
-        title: 'Lecture added',
-        text: 'This lecture will appear in session plan generation.',
+        title: isEdit ? 'Lecture updated' : 'Lecture added',
+        text: isEdit
+          ? 'Changes are saved on the calendar and in session plans.'
+          : 'This lecture will appear in session plan generation.',
         timer: 1600,
         showConfirmButton: false
       });
@@ -1266,7 +1291,10 @@ export default function CalendarView({ onSignOut }) {
       await Swal.fire({
         icon: 'error',
         title: 'Could not save',
-        text: err?.response?.data?.error || err?.message || 'Failed to add lecture.'
+        text:
+          err?.response?.data?.error ||
+          err?.message ||
+          (isEdit ? 'Failed to update lecture.' : 'Failed to add lecture.')
       });
       throw err;
     }
@@ -1748,6 +1776,7 @@ export default function CalendarView({ onSignOut }) {
           setModalOpen(true);
         }}
         onAddLecture={() => {
+          setLectureToEdit(null);
           setDayChoiceOpen(false);
           setLectureModalOpen(true);
         }}
@@ -1776,11 +1805,13 @@ export default function CalendarView({ onSignOut }) {
         isOpen={lectureModalOpen}
         onClose={() => {
           setLectureModalOpen(false);
+          setLectureToEdit(null);
           setSelectedDayStr(null);
         }}
         onSave={handleSaveLecture}
         suggestions={lectureSuggestions}
         initialValues={lectureModalInitialValues}
+        lectureToEdit={lectureToEdit}
       />
 
       <ReminderModal
