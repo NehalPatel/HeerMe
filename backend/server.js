@@ -5,6 +5,8 @@ import mongoose from 'mongoose';
 import remindersRouter from './routes/reminders.js';
 import attendanceRouter from './routes/attendance.js';
 import exportRouter from './routes/export.js';
+import academicLecturesRouter from './routes/academicLectures.js';
+import sessionPlansRouter from './routes/sessionPlans.js';
 import authRouter from './routes/auth.js';
 import requireAuth from './middleware/auth.js';
 
@@ -19,6 +21,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/reminders', requireAuth, remindersRouter);
 app.use('/api/attendance', requireAuth, attendanceRouter);
 app.use('/api/export', requireAuth, exportRouter);
+app.use('/api/academic-lectures', requireAuth, academicLecturesRouter);
+app.use('/api/session-plans', requireAuth, sessionPlansRouter);
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/heerme';
 

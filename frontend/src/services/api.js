@@ -82,6 +82,47 @@ export const putAttendance = (body) => api.put('/attendance', body).then((res) =
 export const deleteAttendance = (calendarDate) =>
   api.delete(`/attendance/${encodeURIComponent(calendarDate)}`).then((res) => res.data);
 
+export const getAcademicLectures = (params = {}) =>
+  api.get('/academic-lectures', { params }).then((res) => res.data);
+export const createAcademicLecture = (data) =>
+  api.post('/academic-lectures', data).then((res) => res.data);
+export const updateAcademicLecture = (id, data) =>
+  api.put(`/academic-lectures/${id}`, data).then((res) => res.data);
+export const deleteAcademicLecture = (id) =>
+  api.delete(`/academic-lectures/${id}`).then((res) => res.data);
+
+export const getSessionPlanPeriods = (year, month) =>
+  api.get('/session-plans/periods', { params: { year, month } }).then((res) => res.data);
+export const listSessionPlans = (params = {}) =>
+  api.get('/session-plans', { params }).then((res) => res.data);
+export const getSessionPlan = (id) => api.get(`/session-plans/${id}`).then((res) => res.data);
+export const generateSessionPlan = (data) =>
+  api.post('/session-plans/generate', data).then((res) => res.data);
+export const generateSessionPlansBulk = (data) =>
+  api.post('/session-plans/generate-bulk', data).then((res) => res.data);
+export const updateSessionPlan = (id, data) =>
+  api.put(`/session-plans/${id}`, data).then((res) => res.data);
+
+export async function downloadSessionPlan(id) {
+  const res = await api.get(`/session-plans/${id}/download`, { responseType: 'blob' });
+  const blob = res.data;
+  if (!(blob instanceof Blob)) throw new Error('Invalid download response');
+  const cd = res.headers['content-disposition'];
+  const name = filenameFromContentDisposition(cd) || 'session-plan.docx';
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function filenameFromContentDisposition(cd) {
   if (!cd || typeof cd !== 'string') return null;
   const m =

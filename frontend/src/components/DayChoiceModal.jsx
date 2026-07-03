@@ -3,7 +3,7 @@ import Modal from 'react-modal';
 
 Modal.setAppElement('#root');
 
-export default function DayChoiceModal({ isOpen, onClose, dateLabel, onAddReminder, onCollegeAttendance }) {
+export default function DayChoiceModal({ isOpen, onClose, dateLabel, onAddReminder, onAddLecture, onCollegeAttendance }) {
   return (
     <Modal
       isOpen={isOpen}
@@ -21,6 +21,13 @@ export default function DayChoiceModal({ isOpen, onClose, dateLabel, onAddRemind
             className="w-full py-3 px-4 rounded-xl bg-primary-500 text-white font-medium hover:bg-primary-600"
           >
             Add reminder
+          </button>
+          <button
+            type="button"
+            onClick={onAddLecture}
+            className="w-full py-3 px-4 rounded-xl bg-indigo-500 text-white font-medium hover:bg-indigo-600"
+          >
+            Add lecture
           </button>
           <button
             type="button"

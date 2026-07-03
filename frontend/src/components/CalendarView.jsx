@@ -7,6 +7,10 @@ import Modal from 'react-modal';
 import ReminderModal from './ReminderModal';
 import DayChoiceModal from './DayChoiceModal';
 import AttendanceModal from './AttendanceModal';
+import SessionPlansPanel from './SessionPlansPanel';
+import AcademicLectureModal from './AcademicLectureModal';
+import { lectureDateTime, normalizeLectureTimes } from '../utils/lectureTimes';
+import { extractLectureFieldOptions, saveLastLectureFields } from '../utils/lectureFieldOptions';
 import {
   getReminderOccurrences,
   createReminder,
@@ -15,7 +19,9 @@ import {
   deleteReminder,
   getAttendance,
   exportDatabaseDownload,
-  searchReminders
+  searchReminders,
+  createAcademicLecture,
+  getAcademicLectures
 } from '../services/api';
 import Swal from 'sweetalert2';
 import { REMINDER_STATUSES } from '../constants/reminderStatus';
@@ -704,6 +710,36 @@ function rawReminderDocumentToSearchEvent(doc) {
   });
 }
 
+function currentAcademicYear() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  if (m >= 6) return `${y}-${String(y + 1).slice(-2)}`;
+  return `${y - 1}-${String(y).slice(-2)}`;
+}
+
+function lectureToEvent(lec) {
+  const divs = (lec.divisions && lec.divisions.length ? lec.divisions : [lec.division]).filter(Boolean);
+  const label = [lec.className, divs.join('+')].filter(Boolean).join('-');
+  const times = normalizeLectureTimes(lec.startTime, lec.endTime);
+  const start = lectureDateTime(lec.lectureDate, times.startTime);
+  const end = lectureDateTime(lec.lectureDate, times.endTime);
+  return {
+    id: `lecture-${lec.id || lec._id}`,
+    title: `${label}: ${lec.topic}`,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    allDay: false,
+    backgroundColor: '#4f46e5',
+    borderColor: '#4338ca',
+    textColor: '#eef2ff',
+    extendedProps: {
+      isLecture: true,
+      lecture: lec
+    }
+  };
+}
+
 function reminderToEvent(r) {
   const startAt = r.startAt ? new Date(r.startAt) : (r.start ? new Date(r.start) : new Date(r.date));
   const endAt = r.endAt ? new Date(r.endAt) : new Date(startAt.getTime() + 60 * 60 * 1000);
@@ -748,6 +784,7 @@ function reminderToEvent(r) {
 
 export default function CalendarView({ onSignOut }) {
   const [events, setEvents] = useState([]);
+  const [lectures, setLectures] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -758,6 +795,8 @@ export default function CalendarView({ onSignOut }) {
   const notificationRef = React.useRef(null);
   const lastRangeKeyRef = React.useRef('');
   const [dayChoiceOpen, setDayChoiceOpen] = useState(false);
+  const [lectureModalOpen, setLectureModalOpen] = useState(false);
+  const [lectureSuggestions, setLectureSuggestions] = useState(null);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   /** YYYY-MM-DD for attendance modal only — avoids clearing when day-choice closes. */
   const [attendanceCalendarDate, setAttendanceCalendarDate] = useState(null);
@@ -992,13 +1031,15 @@ export default function CalendarView({ onSignOut }) {
     let cancelled = false;
     (async () => {
       try {
-        const [occData, attRows] = await Promise.all([
+        const [occData, attRows, lecRows] = await Promise.all([
           getReminderOccurrences({ from, to }),
-          getAttendance({ from, to })
+          getAttendance({ from, to }),
+          getAcademicLectures({ from, to })
         ]);
         if (cancelled || seq !== rangeSeqRef.current) return;
         setEvents(occData.map(reminderToEvent));
         setAttendanceList(Array.isArray(attRows) ? attRows : []);
+        setLectures(Array.isArray(lecRows) ? lecRows : []);
       } catch (err) {
         if (cancelled || seq !== rangeSeqRef.current) return;
         console.error('Failed to load calendar data', err);
@@ -1047,7 +1088,11 @@ export default function CalendarView({ onSignOut }) {
     return markers;
   }, [attendanceList, fcViewType]);
 
-  const calendarEvents = useMemo(() => [...events, ...attendanceTimeMarkers], [events, attendanceTimeMarkers]);
+  const lectureEvents = useMemo(() => lectures.map(lectureToEvent), [lectures]);
+  const calendarEvents = useMemo(
+    () => [...events, ...lectureEvents, ...attendanceTimeMarkers],
+    [events, lectureEvents, attendanceTimeMarkers]
+  );
 
   React.useEffect(() => {
     if (loading) return;
@@ -1125,6 +1170,27 @@ export default function CalendarView({ onSignOut }) {
 
   const handleEventClick = (info) => {
     info.jsEvent.preventDefault();
+    if (info.event.extendedProps?.isLecture) {
+      const lec = info.event.extendedProps.lecture;
+      const divs = (lec?.divisions?.length ? lec.divisions : [lec?.division]).filter(Boolean);
+      const times = normalizeLectureTimes(lec?.startTime, lec?.endTime);
+      Swal.fire({
+        icon: 'info',
+        title: lec?.topic || 'Lecture',
+        html: `<div class="text-left text-sm space-y-1">
+          <p><strong>Class:</strong> ${lec?.className || ''}</p>
+          <p><strong>Division(s):</strong> ${divs.join(', ') || '—'}</p>
+          <p><strong>Subject:</strong> ${lec?.subject || ''}</p>
+          <p><strong>Date:</strong> ${lec?.lectureDate || ''}</p>
+          <p><strong>Time:</strong> ${times.startTime} – ${times.endTime}</p>
+          ${lec?.unitNoAndName ? `<p><strong>Unit:</strong> ${lec.unitNoAndName}</p>` : ''}
+          ${lec?.deliveryMethod ? `<p><strong>Method:</strong> ${lec.deliveryMethod}</p>` : ''}
+          ${lec?.numberOfStudents != null ? `<p><strong>Students:</strong> ${lec.numberOfStudents}</p>` : ''}
+          ${lec?.remarks ? `<p><strong>Remarks:</strong> ${lec.remarks}</p>` : ''}
+        </div>`
+      });
+      return;
+    }
     if (info.event.extendedProps?.isAttendanceMarker) {
       const raw =
         info.event.extendedProps?.calendarDate || toLocalYmd(info.event.start);
@@ -1138,6 +1204,72 @@ export default function CalendarView({ onSignOut }) {
     setDetailEvent(info.event);
     setClickedDate(null);
     setDetailModalOpen(true);
+  };
+
+  const lectureModalInitialValues = useMemo(
+    () => ({
+      academicYear: currentAcademicYear(),
+      lectureDate: selectedDayStr || ''
+    }),
+    [selectedDayStr]
+  );
+
+  React.useEffect(() => {
+    if (!lectureModalOpen) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await getAcademicLectures();
+        if (!cancelled) setLectureSuggestions(extractLectureFieldOptions(rows));
+      } catch {
+        if (!cancelled) setLectureSuggestions(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lectureModalOpen]);
+
+  const handleSaveLecture = async (form) => {
+    try {
+      await createAcademicLecture({
+        academicYear: form.academicYear,
+        className: form.className,
+        divisions: form.divisions,
+        subject: form.subject,
+        semester: form.semester,
+        lectureDate: selectedDayStr || form.lectureDate,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        unitNoAndName: form.unitNoAndName,
+        topic: form.topic,
+        reference: form.reference,
+        deliveryMethod: form.deliveryMethod,
+        numberOfStudents: form.numberOfStudents,
+        remarks: form.remarks
+      });
+      saveLastLectureFields(form);
+      const from = toLocalYmd(activeRange.from);
+      const to = toLocalYmd(activeRange.to);
+      if (from && to && from < to) {
+        const lecRows = await getAcademicLectures({ from, to });
+        setLectures(Array.isArray(lecRows) ? lecRows : []);
+      }
+      await Swal.fire({
+        icon: 'success',
+        title: 'Lecture added',
+        text: 'This lecture will appear in session plan generation.',
+        timer: 1600,
+        showConfirmButton: false
+      });
+    } catch (err) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Could not save',
+        text: err?.response?.data?.error || err?.message || 'Failed to add lecture.'
+      });
+      throw err;
+    }
   };
 
   const handleSaveReminder = async (payload) => {
@@ -1482,6 +1614,17 @@ export default function CalendarView({ onSignOut }) {
               >
                 Attendance analytics
               </button>
+              <button
+                type="button"
+                onClick={() => setMainTab('sessionPlans')}
+                className={`px-3 sm:px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                  mainTab === 'sessionPlans'
+                    ? 'border-primary-500 text-primary-700 bg-primary-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                Session plans
+              </button>
             </div>
 
             <div className={mainTab === 'calendar' ? 'block' : 'hidden'} aria-hidden={mainTab !== 'calendar'}>
@@ -1564,6 +1707,8 @@ export default function CalendarView({ onSignOut }) {
                 customRangeInvalid={analyticsCustomRangeInvalid}
               />
             ) : null}
+
+            {mainTab === 'sessionPlans' ? <SessionPlansPanel /> : null}
           </div>
         )}
       </main>
@@ -1602,6 +1747,10 @@ export default function CalendarView({ onSignOut }) {
           setDayChoiceOpen(false);
           setModalOpen(true);
         }}
+        onAddLecture={() => {
+          setDayChoiceOpen(false);
+          setLectureModalOpen(true);
+        }}
         onCollegeAttendance={() => {
           if (selectedDayStr) setAttendanceCalendarDate(selectedDayStr);
           setDayChoiceOpen(false);
@@ -1621,6 +1770,17 @@ export default function CalendarView({ onSignOut }) {
           attendanceCalendarDate ? attendanceByDate[attendanceCalendarDate] : null
         }
         onSaved={refreshAttendance}
+      />
+
+      <AcademicLectureModal
+        isOpen={lectureModalOpen}
+        onClose={() => {
+          setLectureModalOpen(false);
+          setSelectedDayStr(null);
+        }}
+        onSave={handleSaveLecture}
+        suggestions={lectureSuggestions}
+        initialValues={lectureModalInitialValues}
       />
 
       <ReminderModal
