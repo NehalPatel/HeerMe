@@ -41,3 +41,28 @@ export function formatLectureTimeRange(startTime, endTime) {
   const { startTime: s, endTime: e } = normalizeLectureTimes(startTime, endTime);
   return `${s} – ${e}`;
 }
+
+/** 24h HH:mm → 12h H:mm (no AM/PM), e.g. 09:00 → 9:00, 14:30 → 2:30 */
+export function formatHm12NoAmPm(hm) {
+  if (!isHm(hm)) return String(hm ?? '');
+  const [h24, m] = hm.split(':').map(Number);
+  const h12 = h24 % 12 || 12;
+  return `${h12}:${String(m).padStart(2, '0')}`;
+}
+
+export function formatLectureTimeRange12(startTime, endTime) {
+  const { startTime: s, endTime: e } = normalizeLectureTimes(startTime, endTime);
+  return `${formatHm12NoAmPm(s)} – ${formatHm12NoAmPm(e)}`;
+}
+
+/** Format stored 24h time/range for DOCX export (12h, no AM/PM). */
+export function formatTimeForExport(timeStr) {
+  const raw = String(timeStr ?? '').trim();
+  if (!raw) return '';
+  const parts = raw.split(/\s*[–—-]\s*/);
+  if (parts.length === 2 && isHm(parts[0].trim()) && isHm(parts[1].trim())) {
+    return formatLectureTimeRange12(parts[0].trim(), parts[1].trim());
+  }
+  if (isHm(raw)) return formatHm12NoAmPm(raw);
+  return raw;
+}

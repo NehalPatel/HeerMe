@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import PizZip from 'pizzip';
 import AcademicLecture from '../models/AcademicLecture.js';
 import { formatCompletedOn, formatDisplayDate } from '../utils/biMonthlyPeriods.js';
-import { formatLectureTimeRange } from '../utils/lectureTimes.js';
+import { formatLectureTimeRange, formatTimeForExport } from '../utils/lectureTimes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, '../templates/session-plan-template.docx');
@@ -87,7 +87,7 @@ function buildDataRow(row) {
     row.deliveryMethod || '',
     formatCompletedOn(row.completedOn) || '',
     row.roomNo || '',
-    row.time || '',
+    formatTimeForExport(row.time),
     formatStudentsPresent(row.studentsPresent)
   ];
   const cells = vals.map((v, i) => tableCell(COL_WIDTHS[i], v, i === 0));
