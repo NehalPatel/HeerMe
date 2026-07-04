@@ -92,7 +92,9 @@ export default function SessionPlansPanel() {
         reference: r.reference || '',
         deliveryMethod: r.deliveryMethod || '',
         completedOn: r.completedOn || '',
-        remarks: r.remarks || '',
+        roomNo: r.roomNo || '',
+        time: r.time || '',
+        studentsPresent: r.studentsPresent ?? '',
         lectureId: r.lectureId || null
       }))
     );

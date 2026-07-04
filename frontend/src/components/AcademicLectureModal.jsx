@@ -24,6 +24,7 @@ const EMPTY = {
   reference: '',
   deliveryMethod: '',
   numberOfStudents: '',
+  roomNo: '',
   remarks: ''
 };
 
@@ -116,6 +117,7 @@ export default function AcademicLectureModal({
           lectureToEdit.numberOfStudents != null && lectureToEdit.numberOfStudents !== ''
             ? String(lectureToEdit.numberOfStudents)
             : '',
+        roomNo: lectureToEdit.roomNo || '',
         remarks: lectureToEdit.remarks || ''
       });
       return;
@@ -177,6 +179,7 @@ export default function AcademicLectureModal({
         form.numberOfStudents === '' || !Number.isFinite(Number(form.numberOfStudents))
           ? null
           : Number(form.numberOfStudents),
+      roomNo: form.roomNo.trim(),
       remarks: form.remarks.trim()
     };
 
@@ -335,6 +338,15 @@ export default function AcademicLectureModal({
               onChange={set('numberOfStudents')}
               className={fieldClass}
               placeholder="Optional"
+            />
+          </label>
+          <label className="text-sm text-slate-600">
+            Room no
+            <input
+              value={form.roomNo}
+              onChange={set('roomNo')}
+              className={fieldClass}
+              placeholder="e.g. 301"
             />
           </label>
           <label className="text-sm text-slate-600 sm:col-span-2 lg:col-span-2">

@@ -104,6 +104,7 @@ router.post('/', async (req, res) => {
       reference: trimStr(body.reference),
       deliveryMethod: trimStr(body.deliveryMethod),
       numberOfStudents: parseOptionalStudentCount(body.numberOfStudents),
+      roomNo: trimStr(body.roomNo),
       remarks: trimStr(body.remarks),
       updatedAt: new Date()
     });
@@ -127,6 +128,7 @@ router.put('/:id', async (req, res) => {
       'topic',
       'reference',
       'deliveryMethod',
+      'roomNo',
       'remarks'
     ];
     for (const f of fields) {

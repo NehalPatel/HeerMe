@@ -1188,6 +1188,7 @@ export default function CalendarView({ onSignOut }) {
           ${lec?.unitNoAndName ? `<p><strong>Unit:</strong> ${lec.unitNoAndName}</p>` : ''}
           ${lec?.deliveryMethod ? `<p><strong>Method:</strong> ${lec.deliveryMethod}</p>` : ''}
           ${lec?.numberOfStudents != null ? `<p><strong>Students:</strong> ${lec.numberOfStudents}</p>` : ''}
+          ${lec?.roomNo ? `<p><strong>Room:</strong> ${lec.roomNo}</p>` : ''}
           ${lec?.remarks ? `<p><strong>Remarks:</strong> ${lec.remarks}</p>` : ''}
         </div>`,
         showCancelButton: true,
@@ -1264,6 +1265,7 @@ export default function CalendarView({ onSignOut }) {
       reference: form.reference,
       deliveryMethod: form.deliveryMethod,
       numberOfStudents: form.numberOfStudents,
+      roomNo: form.roomNo,
       remarks: form.remarks
     };
     const lectureId = editingLecture?.id || editingLecture?._id;

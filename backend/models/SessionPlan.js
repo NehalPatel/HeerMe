@@ -10,6 +10,9 @@ const sessionPlanRowSchema = new mongoose.Schema(
     reference: { type: String, default: '' },
     deliveryMethod: { type: String, default: '' },
     completedOn: { type: String, default: '' },
+    roomNo: { type: String, default: '' },
+    time: { type: String, default: '' },
+    studentsPresent: { type: Number, min: 0, default: null },
     remarks: { type: String, default: '' },
     lectureId: { type: mongoose.Schema.Types.ObjectId, ref: 'AcademicLecture', default: null }
   },

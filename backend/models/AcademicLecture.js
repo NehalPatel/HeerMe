@@ -22,6 +22,7 @@ const academicLectureSchema = new mongoose.Schema({
   deliveryMethod: { type: String, default: '', trim: true },
   /** Optional headcount for this lecture */
   numberOfStudents: { type: Number, min: 0, default: null },
+  roomNo: { type: String, default: '', trim: true },
   remarks: { type: String, default: '', trim: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

@@ -7,6 +7,13 @@ import { isYmd, trimStr } from '../utils/validation.js';
 
 const router = express.Router();
 
+function parseOptionalCount(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n);
+}
+
 router.get('/periods', (req, res) => {
   const year = Number(req.query.year);
   const month = Number(req.query.month);
@@ -146,6 +153,9 @@ router.put('/:id', async (req, res) => {
         reference: trimStr(r.reference),
         deliveryMethod: trimStr(r.deliveryMethod),
         completedOn: trimStr(r.completedOn),
+        roomNo: trimStr(r.roomNo),
+        time: trimStr(r.time),
+        studentsPresent: parseOptionalCount(r.studentsPresent),
         remarks: trimStr(r.remarks),
         lectureId: r.lectureId || null
       }));

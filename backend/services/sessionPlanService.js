@@ -1,8 +1,10 @@
 import AcademicLecture from '../models/AcademicLecture.js';
 import SessionPlan from '../models/SessionPlan.js';
 import { divisionLectureFilter, lectureDivisions } from '../utils/lectureDivisions.js';
+import { formatLectureTimeRange, normalizeLectureTimes } from '../utils/lectureTimes.js';
 
 function lectureToRow(lecture, sessionNo) {
+  const times = normalizeLectureTimes(lecture.startTime, lecture.endTime);
   return {
     sessionNo,
     unitNoAndName: lecture.unitNoAndName || '',
@@ -10,7 +12,9 @@ function lectureToRow(lecture, sessionNo) {
     reference: lecture.reference || '',
     deliveryMethod: lecture.deliveryMethod || '',
     completedOn: lecture.lectureDate || '',
-    remarks: lecture.remarks || '',
+    roomNo: lecture.roomNo || '',
+    time: formatLectureTimeRange(times.startTime, times.endTime),
+    studentsPresent: lecture.numberOfStudents ?? null,
     lectureId: lecture._id
   };
 }
@@ -22,7 +26,9 @@ function rowsEqualForLecture(saved, generated) {
     saved.reference === generated.reference &&
     saved.deliveryMethod === generated.deliveryMethod &&
     saved.completedOn === generated.completedOn &&
-    saved.remarks === generated.remarks
+    saved.roomNo === generated.roomNo &&
+    saved.time === generated.time &&
+    saved.studentsPresent === generated.studentsPresent
   );
 }
 
@@ -45,7 +51,9 @@ function mergeRows(existingRows, generatedRows) {
         reference: saved.reference || '',
         deliveryMethod: saved.deliveryMethod || '',
         completedOn: saved.completedOn || '',
-        remarks: saved.remarks || ''
+        roomNo: saved.roomNo || '',
+        time: saved.time || '',
+        studentsPresent: saved.studentsPresent ?? null
       };
       if (!rowsEqualForLecture(savedPlain, gen)) {
         return {
@@ -55,7 +63,9 @@ function mergeRows(existingRows, generatedRows) {
           reference: saved.reference || '',
           deliveryMethod: saved.deliveryMethod || '',
           completedOn: saved.completedOn || gen.completedOn,
-          remarks: saved.remarks || '',
+          roomNo: saved.roomNo || '',
+          time: saved.time || '',
+          studentsPresent: saved.studentsPresent ?? gen.studentsPresent,
           lectureId: gen.lectureId
         };
       }

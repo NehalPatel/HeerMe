@@ -2,7 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import PizZip from 'pizzip';
+import AcademicLecture from '../models/AcademicLecture.js';
 import { formatCompletedOn, formatDisplayDate } from '../utils/biMonthlyPeriods.js';
+import { formatLectureTimeRange } from '../utils/lectureTimes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, '../templates/session-plan-template.docx');
@@ -30,7 +32,51 @@ function tableCell(width, text, center = false) {
   return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/></w:tcPr>${cellPara(text, center)}</w:tc>`;
 }
 
-const COL_WIDTHS = [1008, 2555, 2575, 2250, 1620, 1800, 2430];
+function textRunBold(text) {
+  const t = String(text ?? '');
+  const space = /^\s|\s$/.test(t) ? ' xml:space="preserve"' : '';
+  return `<w:r w:rsidRPr="009B382F"><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr><w:t${space}>${xmlEscape(t)}</w:t></w:r>`;
+}
+
+function headerPara(text) {
+  return `<w:p w:rsidR="00480507" w:rsidRPr="009B382F" w:rsidRDefault="00480507" w:rsidP="00480507"><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:pPr>${textRunBold(text)}</w:p>`;
+}
+
+function headerCell(width, text, extraParas = []) {
+  const paras = [headerPara(text), ...extraParas.map(headerPara)].join('');
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:val="pct12" w:color="auto" w:fill="auto"/><w:vAlign w:val="center"/></w:tcPr>${paras}</w:tc>`;
+}
+
+const COL_WIDTHS = [900, 2000, 2000, 1800, 1400, 1400, 1000, 1200, 1538];
+const TABLE_WIDTH = COL_WIDTHS.reduce((sum, w) => sum + w, 0);
+
+const HEADER_LABELS = [
+  { text: 'Session', extra: ['No'] },
+  { text: 'Unit No & Name' },
+  { text: 'Topic' },
+  { text: 'Reference' },
+  { text: 'Delivery Method (PPT/Demo)' },
+  { text: 'Completed On' },
+  { text: 'Room No' },
+  { text: 'Time' },
+  { text: 'No.of students present' }
+];
+
+function buildHeaderRow() {
+  const cells = HEADER_LABELS.map((label, i) =>
+    headerCell(COL_WIDTHS[i], label.text, label.extra || [])
+  );
+  return `<w:tr w:rsidR="00480507" w:rsidTr="00A74CDE">${cells.join('')}</w:tr>`;
+}
+
+function buildTblGrid() {
+  return `<w:tblGrid>${COL_WIDTHS.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>`;
+}
+
+function formatStudentsPresent(value) {
+  if (value === null || value === undefined || value === '') return '';
+  return String(value);
+}
 
 function buildDataRow(row) {
   const vals = [
@@ -40,7 +86,9 @@ function buildDataRow(row) {
     row.reference || '',
     row.deliveryMethod || '',
     formatCompletedOn(row.completedOn) || '',
-    row.remarks || ''
+    row.roomNo || '',
+    row.time || '',
+    formatStudentsPresent(row.studentsPresent)
   ];
   const cells = vals.map((v, i) => tableCell(COL_WIDTHS[i], v, i === 0));
   return `<w:tr w:rsidR="00480507" w:rsidTr="00A74CDE">${cells.join('')}</w:tr>`;
@@ -93,12 +141,27 @@ function patchDocument(xml, rows) {
   if (!tableMatch) throw new Error('Table not found in session plan template');
   const inner = tableMatch[1];
   const tblPr = inner.match(/<w:tblPr>[\s\S]*?<\/w:tblPr>/)?.[0] || '';
-  const tblGrid = inner.match(/<w:tblGrid>[\s\S]*?<\/w:tblGrid>/)?.[0] || '';
-  const trRows = inner.match(/<w:tr[\s\S]*?<\/w:tr>/g) || [];
-  const headerRow = trRows[0] || '';
+  const tblPrWithWidth = tblPr.replace(/<w:tblW[^/]*\/>/, `<w:tblW w:w="${TABLE_WIDTH}" w:type="dxa"/>`);
   const dataRows = (rows || []).map(buildDataRow).join('');
-  const newTable = `<w:tbl>${tblPr}${tblGrid}${headerRow}${dataRows}</w:tbl>`;
+  const newTable = `<w:tbl>${tblPrWithWidth}${buildTblGrid()}${buildHeaderRow()}${dataRows}</w:tbl>`;
   return xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/, newTable);
+}
+
+async function enrichExportRows(rows) {
+  const ids = [...new Set((rows || []).map((r) => r.lectureId).filter(Boolean))];
+  const lectures = ids.length ? await AcademicLecture.find({ _id: { $in: ids } }) : [];
+  const byId = new Map(lectures.map((l) => [String(l._id), l]));
+
+  return (rows || []).map((row) => {
+    const plain = row?.toObject ? row.toObject() : row;
+    const lec = plain.lectureId ? byId.get(String(plain.lectureId)) : null;
+    return {
+      ...plain,
+      roomNo: plain.roomNo || lec?.roomNo || '',
+      time: plain.time || (lec ? formatLectureTimeRange(lec.startTime, lec.endTime) : ''),
+      studentsPresent: plain.studentsPresent ?? lec?.numberOfStudents ?? null
+    };
+  });
 }
 
 function slugPart(s) {
@@ -143,7 +206,8 @@ export async function buildSessionPlanDocx(plan) {
 
   const headerXml = patchHeader(headerFile.asText(), plan);
   const footerXml = patchFooter(footerFile.asText(), plan);
-  const documentXml = patchDocument(documentFile.asText(), plan.rows || []);
+  const exportRows = await enrichExportRows(plan.rows || []);
+  const documentXml = patchDocument(documentFile.asText(), exportRows);
 
   zip.file('word/header1.xml', headerXml);
   zip.file('word/footer1.xml', footerXml);

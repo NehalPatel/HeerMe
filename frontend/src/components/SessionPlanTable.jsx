@@ -7,7 +7,9 @@ const COLS = [
   { key: 'reference', label: 'Reference' },
   { key: 'deliveryMethod', label: 'Delivery Method' },
   { key: 'completedOn', label: 'Completed On', type: 'date' },
-  { key: 'remarks', label: 'Remarks' }
+  { key: 'roomNo', label: 'Room No' },
+  { key: 'time', label: 'Time' },
+  { key: 'studentsPresent', label: 'No. of students present', type: 'number' }
 ];
 
 export default function SessionPlanTable({ rows, onChange, onRemoveRow }) {
@@ -48,7 +50,7 @@ export default function SessionPlanTable({ rows, onChange, onRemoveRow }) {
                   <input
                     type={c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : 'text'}
                     value={row[c.key] ?? ''}
-                    min={c.type === 'number' ? 1 : undefined}
+                    min={c.type === 'number' ? (c.key === 'sessionNo' ? 1 : 0) : undefined}
                     onChange={(e) =>
                       updateRow(
                         i,
