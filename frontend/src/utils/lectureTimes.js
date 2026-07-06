@@ -1,5 +1,5 @@
 export const DEFAULT_LECTURE_START = '09:00';
-export const DEFAULT_LECTURE_DURATION_MIN = 45;
+export const DEFAULT_LECTURE_DURATION_MIN = 55;
 
 export function isHm(s) {
   return typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);

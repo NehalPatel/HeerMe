@@ -1,5 +1,5 @@
 export const DEFAULT_LECTURE_START = '09:00';
-export const DEFAULT_LECTURE_DURATION_MIN = 45;
+export const DEFAULT_LECTURE_DURATION_MIN = 55;
 
 export function isHm(s) {
   return typeof s === 'string' && /^\d{2}:\d{2}$/.test(s);
@@ -26,7 +26,7 @@ export function addMinutesToHm(hm, minutes) {
 }
 
 /**
- * Normalize lecture start/end. Default 09:00–09:45 (45 min) when missing.
+ * Normalize lecture start/end. Default 09:00–09:55 (55 min) when missing.
  */
 export function normalizeLectureTimes(startTime, endTime) {
   let start = isHm(startTime) ? startTime : DEFAULT_LECTURE_START;

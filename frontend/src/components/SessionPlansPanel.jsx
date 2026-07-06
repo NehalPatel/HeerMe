@@ -8,6 +8,7 @@ import {
   getAcademicLectures,
   listSessionPlans
 } from '../services/api';
+import { extractLectureFieldOptions } from '../utils/lectureFieldOptions';
 
 function currentAcademicYear() {
   const now = new Date();
@@ -49,6 +50,7 @@ export default function SessionPlansPanel() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [knownClasses, setKnownClasses] = useState([]);
+  const [knownSemesters, setKnownSemesters] = useState([]);
 
   const selectedPlan = useMemo(
     () => plans.find((p) => p.id === selectedPlanId) || null,
@@ -61,8 +63,15 @@ export default function SessionPlansPanel() {
       try {
         const [existingPlans, lectures] = await Promise.all([listSessionPlans(), getAcademicLectures()]);
         if (cancelled) return;
-        const classes = [...new Set([...existingPlans, ...lectures].map((p) => p.className).filter(Boolean))];
+        const opts = extractLectureFieldOptions(lectures);
+        const classes = [
+          ...new Set([...opts.classes, ...existingPlans.map((p) => p.className).filter(Boolean)])
+        ].sort((a, b) => a.localeCompare(b));
+        const semesters = [
+          ...new Set([...opts.semesters, ...existingPlans.map((p) => p.semester).filter(Boolean)])
+        ].sort((a, b) => a.localeCompare(b));
         setKnownClasses(classes);
+        setKnownSemesters(semesters);
       } catch {
         /* ignore */
       }
@@ -227,22 +236,31 @@ export default function SessionPlansPanel() {
           </label>
           <label className="text-xs text-slate-600">
             Class
-            <input
-              value={className}
-              onChange={(e) => setClassName(e.target.value)}
-              className={fieldClass}
-              list="sp-class-list"
-              placeholder="TYBCA"
-            />
-            <datalist id="sp-class-list">
+            <select value={className} onChange={(e) => setClassName(e.target.value)} className={fieldClass}>
+              <option value="">Select class</option>
+              {className && !knownClasses.includes(className) ? (
+                <option value={className}>{className}</option>
+              ) : null}
               {knownClasses.map((c) => (
-                <option key={c} value={c} />
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
           <label className="text-xs text-slate-600">
             Semester (optional)
-            <input value={semester} onChange={(e) => setSemester(e.target.value)} className={fieldClass} placeholder="SEM5" />
+            <select value={semester} onChange={(e) => setSemester(e.target.value)} className={fieldClass}>
+              <option value="">Select semester</option>
+              {semester && !knownSemesters.includes(semester) ? (
+                <option value={semester}>{semester}</option>
+              ) : null}
+              {knownSemesters.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-xs text-slate-600">
             Faculty name (optional)

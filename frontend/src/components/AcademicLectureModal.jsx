@@ -28,6 +28,8 @@ const EMPTY = {
   remarks: ''
 };
 
+const UNIT_OPTIONS = ['UNIT-1', 'UNIT-2', 'UNIT-3', 'UNIT-4', 'UNIT-5'];
+
 function SuggestField({
   label,
   value,
@@ -309,68 +311,92 @@ export default function AcademicLectureModal({
             placeholder="Advance Web Designing"
             listId="lecture-subject-list"
           />
-          <label className="text-sm text-slate-600">
-            Lecture date
-            <input required type="date" value={form.lectureDate} onChange={set('lectureDate')} className={fieldClass} />
-          </label>
-          <label className="text-sm text-slate-600">
-            Unit no &amp; name
-            <input value={form.unitNoAndName} onChange={set('unitNoAndName')} className={fieldClass} placeholder="UNIT – 1" />
-          </label>
-          <label className="text-sm text-slate-600">
-            From
-            <input required type="time" value={form.startTime} onChange={handleStartTimeChange} className={fieldClass} />
-          </label>
-          <label className="text-sm text-slate-600">
-            To
-            <input required type="time" value={form.endTime} onChange={handleEndTimeChange} className={fieldClass} />
-            <span className="text-xs text-slate-400 mt-0.5 block">
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2.5">
+            <label className="text-sm text-slate-600">
+              Lecture date
+              <input required type="date" value={form.lectureDate} onChange={set('lectureDate')} className={fieldClass} />
+            </label>
+            <label className="text-sm text-slate-600">
+              Unit no &amp; name
+              <select
+                value={form.unitNoAndName}
+                onChange={set('unitNoAndName')}
+                className={`${fieldClass} bg-white`}
+              >
+                <option value="">Select unit</option>
+                {form.unitNoAndName && !UNIT_OPTIONS.includes(form.unitNoAndName) ? (
+                  <option value={form.unitNoAndName}>{form.unitNoAndName}</option>
+                ) : null}
+                {UNIT_OPTIONS.map((unit) => (
+                  <option key={unit} value={unit}>
+                    {unit}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-slate-600">
+              From
+              <input required type="time" value={form.startTime} onChange={handleStartTimeChange} className={fieldClass} />
+            </label>
+            <label className="text-sm text-slate-600">
+              To
+              <input required type="time" value={form.endTime} onChange={handleEndTimeChange} className={fieldClass} />
+            </label>
+            <span className="col-span-2 lg:col-span-4 text-xs text-slate-400">
               Default {DEFAULT_LECTURE_DURATION_MIN} min when From changes.
             </span>
-          </label>
-          <label className="text-sm text-slate-600">
-            Number of students
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.numberOfStudents}
-              onChange={set('numberOfStudents')}
-              className={fieldClass}
-              placeholder="Optional"
-            />
-          </label>
-          <label className="text-sm text-slate-600">
-            Room no
-            <input
-              value={form.roomNo}
-              onChange={set('roomNo')}
-              className={fieldClass}
-              placeholder="e.g. 301"
-            />
-          </label>
-          <label className="text-sm text-slate-600 sm:col-span-2 lg:col-span-2">
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2.5">
+            <label className="text-sm text-slate-600">
+              Number of students
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={form.numberOfStudents}
+                onChange={set('numberOfStudents')}
+                className={fieldClass}
+                placeholder="Optional"
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Room no
+              <input
+                value={form.roomNo}
+                onChange={set('roomNo')}
+                className={fieldClass}
+                placeholder="e.g. 301"
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Reference
+              <input value={form.reference} onChange={set('reference')} className={fieldClass} />
+            </label>
+            <label className="text-sm text-slate-600">
+              Delivery method
+              <input
+                value={form.deliveryMethod}
+                onChange={set('deliveryMethod')}
+                className={fieldClass}
+                placeholder="PPT / Demo"
+                list="lecture-delivery-list"
+              />
+              <datalist id="lecture-delivery-list">
+                {['PPT', 'Demo', 'PPT / Demo', ...(suggestions?.deliveryMethods || [])].map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          <label className="text-sm text-slate-600 sm:col-span-2 lg:col-span-3">
             Topic
-            <input required value={form.topic} onChange={set('topic')} className={fieldClass} />
-          </label>
-          <label className="text-sm text-slate-600">
-            Reference
-            <input value={form.reference} onChange={set('reference')} className={fieldClass} />
-          </label>
-          <label className="text-sm text-slate-600">
-            Delivery method
-            <input
-              value={form.deliveryMethod}
-              onChange={set('deliveryMethod')}
-              className={fieldClass}
-              placeholder="PPT / Demo"
-              list="lecture-delivery-list"
+            <textarea
+              required
+              value={form.topic}
+              onChange={set('topic')}
+              rows={2}
+              className={`${fieldClass} resize-none`}
             />
-            <datalist id="lecture-delivery-list">
-              {['PPT', 'Demo', 'PPT / Demo', ...(suggestions?.deliveryMethods || [])].map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
           </label>
           <label className="text-sm text-slate-600 lg:col-span-3">
             Remarks

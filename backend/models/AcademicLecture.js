@@ -15,7 +15,7 @@ const academicLectureSchema = new mongoose.Schema({
   /** HH:mm local */
   startTime: { type: String, default: '09:00' },
   /** HH:mm local */
-  endTime: { type: String, default: '09:45' },
+  endTime: { type: String, default: '09:55' },
   unitNoAndName: { type: String, default: '', trim: true },
   topic: { type: String, required: true, trim: true },
   reference: { type: String, default: '', trim: true },
