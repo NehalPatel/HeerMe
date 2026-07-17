@@ -7,7 +7,7 @@ import { formatCompletedOn, formatDisplayDate } from '../utils/biMonthlyPeriods.
 import { formatLectureTimeRange, formatTimeForExport } from '../utils/lectureTimes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_PATH = path.join(__dirname, '../templates/session-plan-template.docx');
+const TEMPLATE_PATH = path.join(__dirname, '../docs/session-plan-template.docx');
 
 function xmlEscape(text) {
   return String(text ?? '')
@@ -94,46 +94,30 @@ function buildDataRow(row) {
   return `<w:tr w:rsidR="00480507" w:rsidTr="00A74CDE">${cells.join('')}</w:tr>`;
 }
 
-function headerTextRun(text, size = 20) {
-  const t = String(text ?? '');
-  const space = /^\s|\s$/.test(t) ? ' xml:space="preserve"' : '';
-  return `<w:r w:rsidRPr="009B382F"><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="${size}"/><w:szCs w:val="28"/></w:rPr><w:t${space}>${xmlEscape(t)}</w:t></w:r>`;
+function fillPlaceholders(xml, values) {
+  let out = xml;
+  for (const [key, value] of Object.entries(values)) {
+    out = out.split(`{${key}}`).join(xmlEscape(value ?? ''));
+  }
+  return out;
 }
 
 function patchHeader(xml, plan) {
-  const classLabel = plan.division ? `${plan.className}-${plan.division}` : plan.className;
-  const periodLine = `For the Period <${formatDisplayDate(plan.periodFrom)}> To <${formatDisplayDate(plan.periodTo)}>`;
-  let out = xml;
-
-  out = out.replace(/: 2025-26 /g, `: ${xmlEscape(plan.academicYear)} `);
-
-  // Period dates are split across many <w:r> runs in the template; replace the whole paragraph.
-  out = out.replace(
-    /<w:p w:rsidR="009B382F" w:rsidRPr="009B382F" w:rsidRDefault="009B382F" w:rsidP="009B382F"><w:pPr><w:pStyle w:val="Header"\/><w:rPr>[\s\S]*?<\/w:pPr>[\s\S]*?For the Period[\s\S]*?<\/w:p>/,
-    `<w:p w:rsidR="009B382F" w:rsidRPr="009B382F" w:rsidRDefault="009B382F" w:rsidP="009B382F"><w:pPr><w:pStyle w:val="Header"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="20"/><w:szCs w:val="28"/></w:rPr></w:pPr>${headerTextRun(periodLine)}</w:p>`
-  );
-
-  // Class label spans two runs (TYBCA- + F); merge into one well-formed run.
-  out = out.replace(
-    /<w:r w:rsidR="00480507"><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"\/><w:b\/><w:sz w:val="28"\/><w:szCs w:val="28"\/><\/w:rPr><w:t>TYBCA-<\/w:t><\/w:r><w:r w:rsidR="003C3537"><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"\/><w:b\/><w:sz w:val="28"\/><w:szCs w:val="28"\/><\/w:rPr><w:t>F<\/w:t><\/w:r>/,
-    `<w:r w:rsidR="00480507"><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t>${xmlEscape(classLabel)}</w:t></w:r>`
-  );
-
-  out = out.replace(
-    /<w:t xml:space="preserve"> Advance Web Designing<\/w:t>/,
-    `<w:t xml:space="preserve"> ${xmlEscape(plan.subject)}</w:t>`
-  );
-  return out;
+  return fillPlaceholders(xml, {
+    'academic-year': plan.academicYear || '',
+    'from-date': formatDisplayDate(plan.periodFrom),
+    'to-date': formatDisplayDate(plan.periodTo),
+    'class-name': plan.className || '',
+    division: plan.division || '',
+    'subject-name': plan.subject || ''
+  });
 }
 
 function patchFooter(xml, plan) {
-  let out = xml;
-  out = out.replace(/<w:t>Nehal Patel<\/w:t>/, `<w:t>${xmlEscape(plan.facultyName || '')}</w:t>`);
-  out = out.replace(
-    /Date of Submission:\s*30\/06\/2025/,
-    `Date of Submission:  ${xmlEscape(formatCompletedOn(plan.submissionDate) || '')}`
-  );
-  return out;
+  return fillPlaceholders(xml, {
+    'user-name': plan.facultyName || 'Nehal Patel',
+    today: formatCompletedOn(plan.submissionDate) || formatCompletedOn(new Date().toISOString().slice(0, 10))
+  });
 }
 
 function patchDocument(xml, rows) {
@@ -179,6 +163,7 @@ function formatDateSlug(ymd) {
 }
 
 export function buildDownloadFilename(plan) {
+  // SDJIC__SessionPlan__AY_2026-27__{class}__{semester}__{division}__{SubjectWithoutSpaces}__NehalPatel__01JUL_15JUL
   const parts = [
     'SDJIC',
     'SessionPlan',
@@ -187,9 +172,9 @@ export function buildDownloadFilename(plan) {
     slugPart(plan.semester),
     slugPart(plan.division),
     slugPart(plan.subject),
-    slugPart(plan.facultyName),
+    'NehalPatel',
     `${formatDateSlug(plan.periodFrom)}_${formatDateSlug(plan.periodTo)}`
-  ].filter(Boolean);
+  ];
   return `${parts.join('__')}.docx`;
 }
 
