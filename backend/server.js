@@ -15,7 +15,8 @@ const PORT = process.env.PORT || 5000;
 
 app.set('trust proxy', 1);
 
-app.use(cors());
+// Expose Content-Disposition so cross-origin clients (Vercel → Render) can read download filenames.
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json());
 app.use('/api/auth', authRouter);
 app.use('/api/reminders', requireAuth, remindersRouter);
