@@ -28,7 +28,7 @@ function jsonReplacer(key, value) {
   return value;
 }
 
-router.get('/', exportLimiter, async (req, res) => {
+router.get('/', exportLimiter, async (req, res, next) => {
   try {
     const [reminders, attendance] = await Promise.all([
       Reminder.find({}).lean().exec(),
@@ -50,7 +50,7 @@ router.get('/', exportLimiter, async (req, res) => {
     res.send(body);
   } catch (err) {
     console.error('Export failed', err);
-    res.status(500).json({ error: err.message || 'Export failed' });
+    next(err);
   }
 });
 

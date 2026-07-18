@@ -1,3 +1,7 @@
+import { isYmd } from './validation.js';
+
+export { isYmd };
+
 /** @param {number} year @param {number} month 1-12 */
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
@@ -37,10 +41,6 @@ export function getBiMonthlyPeriods(year, month) {
       periodTo: toYmd(year, month, last)
     }
   ];
-}
-
-export function isYmd(s) {
-  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
 export function formatDisplayDate(ymd) {

@@ -9,6 +9,15 @@ import { formatLectureTimeRange, formatTimeForExport } from '../utils/lectureTim
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PATH = path.join(__dirname, '../docs/session-plan-template.docx');
 
+/** Cached template bytes — template is static on disk. */
+let templateCache = null;
+
+async function loadTemplateBuffer() {
+  if (templateCache) return templateCache;
+  templateCache = await fs.promises.readFile(TEMPLATE_PATH);
+  return templateCache;
+}
+
 function xmlEscape(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
@@ -179,7 +188,7 @@ export function buildDownloadFilename(plan) {
 }
 
 export async function buildSessionPlanDocx(plan) {
-  const templateBuf = fs.readFileSync(TEMPLATE_PATH);
+  const templateBuf = await loadTemplateBuffer();
   const zip = new PizZip(templateBuf);
 
   const headerFile = zip.file('word/header1.xml');

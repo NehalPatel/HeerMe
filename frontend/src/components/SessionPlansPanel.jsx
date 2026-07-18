@@ -6,29 +6,14 @@ import {
   updateSessionPlan,
   downloadSessionPlan,
   getAcademicLectures,
-  listSessionPlans
+  listSessionPlans,
+  apiErrorMessage
 } from '../services/api';
 import { extractLectureFieldOptions } from '../utils/lectureFieldOptions';
-
-function currentAcademicYear() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth() + 1;
-  if (m >= 6) return `${y}-${String(y + 1).slice(-2)}`;
-  return `${y - 1}-${String(y).slice(-2)}`;
-}
-
-function toYmd(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+import { currentAcademicYear, toLocalYmd as toYmd, addCalendarDays } from '../utils/calendarDates';
 
 function addDays(d, n) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
+  return addCalendarDays(d, n);
 }
 
 function daysInMonth(year, month) {
@@ -148,7 +133,7 @@ export default function SessionPlansPanel() {
         });
       }
     } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Generate failed', text: err.message || 'Could not generate.' });
+      await Swal.fire({ icon: 'error', title: 'Generate failed', text: apiErrorMessage(err, 'Could not generate.') });
     } finally {
       setLoading(false);
     }
@@ -168,7 +153,7 @@ export default function SessionPlansPanel() {
       applySelectedPlan(p);
       await Swal.fire({ icon: 'success', title: 'Saved', timer: 1500, showConfirmButton: false });
     } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Save failed', text: err.message || 'Could not save.' });
+      await Swal.fire({ icon: 'error', title: 'Save failed', text: apiErrorMessage(err, 'Could not save.') });
     } finally {
       setSaving(false);
     }
@@ -185,7 +170,7 @@ export default function SessionPlansPanel() {
       });
       await downloadSessionPlan(selectedPlan.id);
     } catch (err) {
-      await Swal.fire({ icon: 'error', title: 'Download failed', text: err.message || 'Could not download.' });
+      await Swal.fire({ icon: 'error', title: 'Download failed', text: apiErrorMessage(err, 'Could not download.') });
     }
   };
 

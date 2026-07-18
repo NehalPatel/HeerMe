@@ -1,4 +1,5 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import SessionPlan from '../models/SessionPlan.js';
 import { generateSessionPlan, generateSessionPlansBulk, serializeSessionPlan } from '../services/sessionPlanService.js';
 import { buildSessionPlanDocx, buildDownloadFilename } from '../services/sessionPlanDocx.js';
@@ -6,6 +7,22 @@ import { getBiMonthlyPeriods } from '../utils/biMonthlyPeriods.js';
 import { isYmd, trimStr } from '../utils/validation.js';
 
 const router = express.Router();
+
+const generateBulkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many generate requests. Try again later.' }
+});
+
+const downloadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many download requests. Try again later.' }
+});
 
 function parseOptionalCount(value) {
   if (value === undefined || value === null || value === '') return null;
@@ -23,7 +40,7 @@ router.get('/periods', (req, res) => {
   res.json(getBiMonthlyPeriods(year, month));
 });
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const filter = {};
     for (const key of ['academicYear', 'className', 'division', 'subject']) {
@@ -33,11 +50,11 @@ router.get('/', async (req, res) => {
     const rows = await SessionPlan.find(filter).sort({ periodFrom: -1, updatedAt: -1 });
     res.json(rows.map(serializeSessionPlan));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.post('/generate-bulk', async (req, res) => {
+router.post('/generate-bulk', generateBulkLimiter, async (req, res, next) => {
   try {
     const body = req.body || {};
     const academicYear = trimStr(body.academicYear);
@@ -64,11 +81,11 @@ router.post('/generate-bulk', async (req, res) => {
     });
     res.json({ plans, count: plans.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.post('/generate', async (req, res) => {
+router.post('/generate', async (req, res, next) => {
   try {
     const body = req.body || {};
     const academicYear = trimStr(body.academicYear);
@@ -98,11 +115,11 @@ router.post('/generate', async (req, res) => {
     });
     res.json(serializeSessionPlan(plan));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.get('/:id/download', async (req, res) => {
+router.get('/:id/download', downloadLimiter, async (req, res, next) => {
   try {
     const plan = await SessionPlan.findById(req.params.id);
     if (!plan) return res.status(404).json({ error: 'Session plan not found' });
@@ -112,21 +129,21 @@ router.get('/:id/download', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const plan = await SessionPlan.findById(req.params.id);
     if (!plan) return res.status(404).json({ error: 'Session plan not found' });
     res.json(serializeSessionPlan(plan));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', async (req, res, next) => {
   try {
     const body = req.body || {};
     const plan = await SessionPlan.findById(req.params.id);
@@ -164,7 +181,7 @@ router.put('/:id', async (req, res) => {
     await plan.save();
     res.json(serializeSessionPlan(plan));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 

@@ -1,46 +1,47 @@
-# HeerMe – Reminder Web Application
+# HeerMe
 
-A single-page reminder app with a calendar UI. Built with **React (Vite)** and **Node.js + Express + MongoDB**.
+Personal dashboard for reminders, college attendance, academic lectures, and session-plan DOCX export.
+
+**Stack:** React 18 (Vite) + Express + MongoDB · **Auth:** 6-digit PIN → JWT (7 days)  
+**Production:** Frontend on [Vercel](https://heer-me.vercel.app/) · API on [Render](https://heerme.onrender.com)
 
 ## Features
 
-- **Calendar**: Month / Week / Day views (FullCalendar), responsive layout
-- **Reminders**: Click a date → modal with title, description, date, time → save
-- **Events**: Reminders show as calendar events; click to view details or delete
-- **Search**: Filter reminders by title or description
-- **Today**: Today’s date is highlighted in the calendar
-- **Notifications**: Browser notifications for reminders (when the tab is open and permission granted)
+- Calendar (month / week / day) with reminders, lectures, and college in/out markers
+- Recurring reminders, search, browser notifications
+- Attendance logging + analytics charts
+- Academic lectures and bi-monthly session plan generation / DOCX download
+- Authenticated JSON database export
 
 ## Prerequisites
 
-- **Node.js** 18+
-- **MongoDB** (local or Atlas)
+- Node.js 18+
+- MongoDB (local or Atlas)
 
-## Setup
+## Local setup
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
 npm install
-```
-
-Create a `.env` file (optional; defaults work for local dev):
-
-```env
-PORT=5000
-MONGODB_URI=mongodb://localhost:27017/heerme
-```
-
-Start the API (with auto-reload):
-
-```bash
+cp .env.example .env   # then edit secrets
 npm run dev
 ```
 
-Backend runs at **http://localhost:5000**.
+API: **http://localhost:5000** · Health: `GET /api/health`
 
-### 2. Frontend
+Required env (see [`backend/.env.example`](backend/.env.example)):
+
+| Variable | Notes |
+|----------|--------|
+| `HEERME_PIN` | Exactly 6 digits |
+| `JWT_SECRET` | ≥ 16 characters |
+| `MONGODB_URI` | Defaults to `mongodb://localhost:27017/heerme` |
+| `CORS_ORIGIN` | Production: `https://heer-me.vercel.app` (comma-separated allowlist). Empty = allow any origin (dev only) |
+| `PORT` | Default `5000` |
+
+### Frontend
 
 ```bash
 cd frontend
@@ -48,59 +49,44 @@ npm install
 npm run dev
 ```
 
-Frontend runs at **http://localhost:3000** and proxies `/api` to the backend.
+App: **http://localhost:3000** (Vite proxies `/api` → `localhost:5000`).
 
-### 3. Run both
+For production builds, set build-time:
 
-From the project root:
-
-```bash
-# Terminal 1 – backend
-cd backend && npm run dev
-
-# Terminal 2 – frontend
-cd frontend && npm run dev
+```env
+VITE_API_URL=https://heerme.onrender.com/api
 ```
 
-Then open **http://localhost:3000**.
+## Scripts
+
+| App | Command | Purpose |
+|-----|---------|---------|
+| backend | `npm run dev` / `npm start` | Dev watch / production |
+| backend | `npm test` | Node test runner |
+| frontend | `npm run dev` / `npm run build` | Dev / production bundle |
+| frontend | `npm test` | Node test runner |
+
+## Deploy notes
+
+1. **Render (API):** Root `backend`, start `npm start`, set env vars including `CORS_ORIGIN=https://heer-me.vercel.app`.
+2. **Vercel (SPA):** Root `frontend`, build `npm run build`, output `dist`, set `VITE_API_URL` to the Render API `/api` base.
+3. After API deploys, confirm `Content-Disposition` is exposed (CORS `exposedHeaders`) so session-plan download filenames work cross-origin.
+
+## API (authenticated unless noted)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | `/api/auth/login` | PIN; rate-limited |
+| GET | `/api/auth/session` | JWT check |
+| GET | `/api/health` | Public; `503` if Mongo disconnected |
+| * | `/api/reminders`, `/attendance`, `/academic-lectures`, `/session-plans`, `/export` | Bearer JWT |
 
 ## Project structure
 
 ```
 heerme/
-├── backend/
-│   ├── models/Reminder.js    # Mongoose schema
-│   ├── routes/reminders.js  # GET/POST/DELETE /api/reminders
-│   ├── server.js
-│   └── package.json
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── CalendarView.jsx
-│   │   │   └── ReminderModal.jsx
-│   │   ├── services/api.js
-│   │   ├── App.jsx
-│   │   ├── main.jsx
-│   │   └── index.css
-│   ├── index.html
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── package.json
-├── planner.md
+├── backend/          # Express API
+├── frontend/         # Vite React SPA
+├── .github/workflows/ci.yml
 └── README.md
 ```
-
-## API
-
-| Method | Endpoint               | Description        |
-|--------|------------------------|--------------------|
-| GET    | `/api/reminders`       | List all reminders |
-| POST   | `/api/reminders`       | Create reminder    |
-| DELETE | `/api/reminders/:id`   | Delete reminder    |
-
-**Reminder body (POST):** `{ title, description?, date (ISO), time }`
-
-## Tech stack
-
-- **Frontend**: React 18, Vite, FullCalendar, Tailwind CSS, Axios, react-modal
-- **Backend**: Node.js, Express, Mongoose, MongoDB

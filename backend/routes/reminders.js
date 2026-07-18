@@ -1,9 +1,27 @@
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import Reminder from '../models/Reminder.js';
+import { escapeRegex } from '../utils/validation.js';
 import rrulePkg from 'rrule';
 const { RRule } = rrulePkg;
 
 const router = express.Router();
+
+const searchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many search requests. Try again later.' }
+});
+
+const occurrencesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many occurrence requests. Try again later.' }
+});
 
 function formatHHmmInTimeZone(date, timeZone = 'Asia/Kolkata') {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '00:00';
@@ -101,12 +119,8 @@ function getOverrideForOccurrence(reminderDoc, occurrenceStartAt) {
   return arr.find((o) => o?.occurrenceStartAt && new Date(o.occurrenceStartAt).getTime() === key) || null;
 }
 
-function escapeRegex(s) {
-  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 // Global search: unified text blob (title, description, task comments, category, priority, occurrence comments)
-router.get('/search', async (req, res) => {
+router.get('/search', searchLimiter, async (req, res, next) => {
   try {
     const q = String(req.query.q || '').trim();
     if (!q) {
@@ -167,23 +181,23 @@ router.get('/search', async (req, res) => {
 
     res.json(reminders);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // GET /api/reminders - fetch all reminders
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const reminders = await Reminder.find().sort({ date: 1, time: 1 });
     res.json(reminders);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // GET /api/reminders/occurrences?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Expands recurring reminders into occurrences within [fromDay, toDay) using app calendar (Asia/Kolkata).
-router.get('/occurrences', async (req, res) => {
+router.get('/occurrences', occurrencesLimiter, async (req, res, next) => {
   try {
     const fromParam = String(req.query.from || '');
     const toParam = String(req.query.to || '');
@@ -284,12 +298,12 @@ router.get('/occurrences', async (req, res) => {
 
     res.json(out);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // PUT /api/reminders/:id/occurrence - update status/comments for a single occurrence
-router.put('/:id/occurrence', async (req, res) => {
+router.put('/:id/occurrence', async (req, res, next) => {
   try {
     const { occurrenceStartAt, status, comments } = req.body || {};
     if (!isValidIsoDateString(String(occurrenceStartAt || ''))) {
@@ -323,23 +337,23 @@ router.put('/:id/occurrence', async (req, res) => {
     await reminder.save();
     res.json({ message: 'Occurrence updated' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // GET /api/reminders/:id - fetch one reminder by id
-router.get('/:id', async (req, res) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const reminder = await Reminder.findById(req.params.id);
     if (!reminder) return res.status(404).json({ error: 'Reminder not found' });
     res.json(reminder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // POST /api/reminders - create reminder
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const { title, description, date, time, priority, category, startAt, endAt, recurrence, timezone } = req.body;
     if (!title) {
@@ -379,12 +393,12 @@ router.post('/', async (req, res) => {
     await reminder.save();
     res.status(201).json(reminder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // PUT /api/reminders/:id/close - close reminder with final status + comments
-router.put('/:id/close', async (req, res) => {
+router.put('/:id/close', async (req, res, next) => {
   try {
     const { status, comments } = req.body;
     const allowedStatus = ['open', 'in-progress', 'completed', 'invalid'];
@@ -402,12 +416,12 @@ router.put('/:id/close', async (req, res) => {
     if (!reminder) return res.status(404).json({ error: 'Reminder not found' });
     res.json(reminder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // PUT /api/reminders/:id - update reminder fields (edit task)
-router.put('/:id', async (req, res) => {
+router.put('/:id', async (req, res, next) => {
   try {
     const {
       title,
@@ -472,18 +486,18 @@ router.put('/:id', async (req, res) => {
     if (!reminder) return res.status(404).json({ error: 'Reminder not found' });
     res.json(reminder);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // DELETE /api/reminders/:id - delete reminder
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const reminder = await Reminder.findByIdAndDelete(req.params.id);
     if (!reminder) return res.status(404).json({ error: 'Reminder not found' });
     res.json({ message: 'Reminder deleted' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 

@@ -36,4 +36,9 @@ const reminderSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// List / occurrence expansion often sorts by createdAt; startAt helps one-off date windows.
+reminderSchema.index({ createdAt: -1 });
+reminderSchema.index({ startAt: 1 });
+reminderSchema.index({ status: 1, createdAt: -1 });
+
 export default mongoose.model('Reminder', reminderSchema);

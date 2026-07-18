@@ -63,7 +63,6 @@ export const loginWithPin = (pin) =>
 
 export const verifySession = () => api.get('/auth/session').then((res) => res.data);
 
-export const getReminders = () => api.get('/reminders').then((res) => res.data);
 /** @param {string} q @param {number} [limit] */
 export const searchReminders = (q, limit = 30) =>
   api.get('/reminders/search', { params: { q, limit } }).then((res) => res.data);
@@ -71,7 +70,6 @@ export const getReminderOccurrences = ({ from, to, max } = {}) =>
   api.get('/reminders/occurrences', { params: { from, to, max } }).then((res) => res.data);
 export const createReminder = (data) => api.post('/reminders', data).then((res) => res.data);
 export const updateReminder = (id, data) => api.put(`/reminders/${id}`, data).then((res) => res.data);
-export const closeReminder = (id, data) => api.put(`/reminders/${id}/close`, data).then((res) => res.data);
 export const updateReminderOccurrence = (id, data) =>
   api.put(`/reminders/${id}/occurrence`, data).then((res) => res.data);
 export const deleteReminder = (id) => api.delete(`/reminders/${id}`).then((res) => res.data);
@@ -88,40 +86,13 @@ export const createAcademicLecture = (data) =>
   api.post('/academic-lectures', data).then((res) => res.data);
 export const updateAcademicLecture = (id, data) =>
   api.put(`/academic-lectures/${id}`, data).then((res) => res.data);
-export const deleteAcademicLecture = (id) =>
-  api.delete(`/academic-lectures/${id}`).then((res) => res.data);
 
-export const getSessionPlanPeriods = (year, month) =>
-  api.get('/session-plans/periods', { params: { year, month } }).then((res) => res.data);
 export const listSessionPlans = (params = {}) =>
   api.get('/session-plans', { params }).then((res) => res.data);
-export const getSessionPlan = (id) => api.get(`/session-plans/${id}`).then((res) => res.data);
-export const generateSessionPlan = (data) =>
-  api.post('/session-plans/generate', data).then((res) => res.data);
 export const generateSessionPlansBulk = (data) =>
   api.post('/session-plans/generate-bulk', data).then((res) => res.data);
 export const updateSessionPlan = (id, data) =>
   api.put(`/session-plans/${id}`, data).then((res) => res.data);
-
-export async function downloadSessionPlan(id) {
-  const res = await api.get(`/session-plans/${id}/download`, { responseType: 'blob' });
-  const blob = res.data;
-  if (!(blob instanceof Blob)) throw new Error('Invalid download response');
-  const cd = res.headers['content-disposition'];
-  const name = filenameFromContentDisposition(cd) || 'session-plan.docx';
-  const url = URL.createObjectURL(blob);
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.rel = 'noopener';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 function filenameFromContentDisposition(cd) {
   if (!cd || typeof cd !== 'string') return null;
@@ -136,6 +107,38 @@ function filenameFromContentDisposition(cd) {
   }
 }
 
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Prefer API error body over Axios generic message. */
+export function apiErrorMessage(err, fallback = 'Request failed') {
+  const data = err?.response?.data;
+  if (data && typeof data === 'object' && typeof data.error === 'string') return data.error;
+  if (typeof err?.message === 'string' && err.message) return err.message;
+  return fallback;
+}
+
+export async function downloadSessionPlan(id) {
+  const res = await api.get(`/session-plans/${id}/download`, { responseType: 'blob' });
+  const blob = res.data;
+  if (!(blob instanceof Blob)) throw new Error('Invalid download response');
+  const cd = res.headers['content-disposition'];
+  const name = filenameFromContentDisposition(cd) || 'session-plan.docx';
+  triggerBlobDownload(blob, name);
+}
+
 /** Download all reminders + attendance as JSON (authenticated). */
 export async function exportDatabaseDownload() {
   try {
@@ -146,18 +149,7 @@ export async function exportDatabaseDownload() {
     }
     const cd = res.headers['content-disposition'];
     const name = filenameFromContentDisposition(cd) || 'heerme-export.json';
-    const url = URL.createObjectURL(blob);
-    try {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    triggerBlobDownload(blob, name);
   } catch (err) {
     const data = err?.response?.data;
     if (data instanceof Blob) {

@@ -1,11 +1,8 @@
 import express from 'express';
 import Attendance from '../models/Attendance.js';
+import { isYmd } from '../utils/validation.js';
 
 const router = express.Router();
-
-function isYmd(s) {
-  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
-}
 
 function parseOptInstant(v) {
   if (v == null || v === '') return null;
@@ -14,7 +11,7 @@ function parseOptInstant(v) {
 }
 
 // GET /api/attendance?from=YYYY-MM-DD&to=YYYY-MM-DD (to exclusive, same as reminders)
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const from = String(req.query.from || '');
     const to = String(req.query.to || '');
@@ -24,12 +21,12 @@ router.get('/', async (req, res) => {
     const rows = await Attendance.find({ calendarDate: { $gte: from, $lt: to } }).sort({ calendarDate: 1 });
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // PUT /api/attendance — upsert one day
-router.put('/', async (req, res) => {
+router.put('/', async (req, res, next) => {
   try {
     const { calendarDate, isLeave, checkInAt, checkOutAt, notes } = req.body || {};
     if (!isYmd(String(calendarDate || ''))) {
@@ -70,12 +67,12 @@ router.put('/', async (req, res) => {
 
     res.json(doc);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
 // DELETE /api/attendance/:calendarDate — remove log for that day
-router.delete('/:calendarDate', async (req, res) => {
+router.delete('/:calendarDate', async (req, res, next) => {
   try {
     const calendarDate = decodeURIComponent(String(req.params.calendarDate || ''));
     if (!isYmd(calendarDate)) {
@@ -87,7 +84,7 @@ router.delete('/:calendarDate', async (req, res) => {
     }
     res.json({ message: 'Removed' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 

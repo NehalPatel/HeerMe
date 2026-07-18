@@ -3,6 +3,7 @@ import AcademicLecture from '../models/AcademicLecture.js';
 import { isYmd, trimStr } from '../utils/validation.js';
 import { lectureDivisions, parseDivisionsInput } from '../utils/lectureDivisions.js';
 import { normalizeLectureTimes } from '../utils/lectureTimes.js';
+import { HttpError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -47,28 +48,28 @@ function buildListFilter(query) {
   if (from || to) {
     filter.lectureDate = {};
     if (from) {
-      if (!isYmd(from)) throw new Error('from must be YYYY-MM-DD');
+      if (!isYmd(from)) throw new HttpError(400, 'from must be YYYY-MM-DD');
       filter.lectureDate.$gte = from;
     }
     if (to) {
-      if (!isYmd(to)) throw new Error('to must be YYYY-MM-DD');
+      if (!isYmd(to)) throw new HttpError(400, 'to must be YYYY-MM-DD');
       filter.lectureDate.$lte = to;
     }
   }
   return filter;
 }
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res, next) => {
   try {
     const filter = buildListFilter(req.query);
     const rows = await AcademicLecture.find(filter).sort({ lectureDate: 1, startTime: 1, createdAt: 1 });
     res.json(rows.map(serialize));
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    next(err);
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
   try {
     const body = req.body || {};
     const academicYear = trimStr(body.academicYear);
@@ -110,11 +111,11 @@ router.post('/', async (req, res) => {
     });
     res.status(201).json(serialize(doc));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.put('/:id', async (req, res) => {
+router.put('/:id', async (req, res, next) => {
   try {
     const body = req.body || {};
     const updates = { updatedAt: new Date() };
@@ -165,17 +166,17 @@ router.put('/:id', async (req, res) => {
     if (!doc) return res.status(404).json({ error: 'Lecture not found' });
     res.json(serialize(doc));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const doc = await AcademicLecture.findByIdAndDelete(req.params.id);
     if (!doc) return res.status(404).json({ error: 'Lecture not found' });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    next(err);
   }
 });
 
