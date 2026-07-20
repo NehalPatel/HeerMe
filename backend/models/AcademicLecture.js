@@ -24,11 +24,11 @@ const academicLectureSchema = new mongoose.Schema({
   numberOfStudents: { type: Number, min: 0, default: null },
   roomNo: { type: String, default: '', trim: true },
   remarks: { type: String, default: '', trim: true },
-  /** conducted = held as planned; cancelled = did not run (reason in remarks) */
+  /** planned = upcoming; conducted = held; cancelled = did not run (reason in remarks) */
   status: {
     type: String,
-    enum: ['conducted', 'cancelled'],
-    default: 'conducted'
+    enum: ['planned', 'conducted', 'cancelled'],
+    default: 'planned'
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

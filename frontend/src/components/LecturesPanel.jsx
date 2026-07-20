@@ -276,12 +276,27 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
             <tbody>
               {filteredSorted.map((lec, i) => {
                 const id = lec.id || lec._id || i;
-                const cancelled = lec.status === 'cancelled';
+                const status =
+                  lec.status === 'cancelled'
+                    ? 'cancelled'
+                    : lec.status === 'planned'
+                      ? 'planned'
+                      : 'conducted';
+                const statusClass =
+                  status === 'cancelled'
+                    ? 'bg-red-100 text-red-800'
+                    : status === 'planned'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-indigo-100 text-indigo-800';
+                const statusLabel =
+                  status === 'cancelled' ? 'Cancelled' : status === 'planned' ? 'Planned' : 'Conducted';
                 return (
                   <tr
                     key={id}
                     className={`border-b border-slate-100 last:border-0 cursor-pointer ${
-                      cancelled ? 'bg-red-50/70 hover:bg-red-50' : 'hover:bg-primary-50/40'
+                      status === 'cancelled'
+                        ? 'bg-red-50/70 hover:bg-red-50'
+                        : 'hover:bg-primary-50/40'
                     }`}
                     onClick={() => onEditLecture?.(lec)}
                     onKeyDown={(e) => {
@@ -303,14 +318,8 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
                     <td className="px-2 py-2 text-slate-800 whitespace-nowrap">{divisionLabel(lec)}</td>
                     <td className="px-2 py-2 text-slate-800">{lec.subject || '—'}</td>
                     <td className="px-2 py-2 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
-                          cancelled
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {cancelled ? 'Cancelled' : 'Conducted'}
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${statusClass}`}>
+                        {statusLabel}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-slate-800 whitespace-nowrap">

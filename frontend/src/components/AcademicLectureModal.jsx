@@ -26,15 +26,27 @@ const EMPTY = {
   numberOfStudents: '',
   roomNo: '',
   remarks: '',
-  status: 'conducted'
+  status: 'planned'
 };
 
 const UNIT_OPTIONS = ['UNIT-1', 'UNIT-2', 'UNIT-3', 'UNIT-4', 'UNIT-5'];
+
+const LECTURE_STATUSES = [
+  { value: 'planned', label: 'Planned' },
+  { value: 'conducted', label: 'Conducted' },
+  { value: 'cancelled', label: 'Cancelled' }
+];
+
+function normalizeLectureStatus(value) {
+  if (value === 'cancelled' || value === 'planned' || value === 'conducted') return value;
+  return 'conducted';
+}
 
 function SuggestField({
   label,
   value,
   onChange,
+  onClear,
   options = [],
   required = false,
   placeholder = '',
@@ -44,18 +56,36 @@ function SuggestField({
 }) {
   const fieldClass =
     'w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 bg-white';
+  const showClear = Boolean(onClear && String(value || '').trim());
 
   return (
     <label className={`text-sm text-slate-600 ${className}`}>
-      {label}
-      <input
-        required={required}
-        value={value}
-        onChange={onChange}
-        className={fieldClass}
-        placeholder={placeholder}
-        list={options.length ? listId : undefined}
-      />
+      <span className="flex items-center justify-between gap-2">
+        <span>{label}</span>
+        {showClear ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              onClear();
+            }}
+            className="text-xs font-medium text-slate-500 hover:text-slate-800"
+            aria-label={`Clear ${label}`}
+          >
+            Clear
+          </button>
+        ) : null}
+      </span>
+      <div className="relative mt-0">
+        <input
+          required={required}
+          value={value}
+          onChange={onChange}
+          className={fieldClass}
+          placeholder={placeholder}
+          list={options.length ? listId : undefined}
+        />
+      </div>
       {options.length ? (
         <datalist id={listId}>
           {options.map((opt) => (
@@ -122,18 +152,19 @@ export default function AcademicLectureModal({
             : '',
         roomNo: lectureToEdit.roomNo || '',
         remarks: lectureToEdit.remarks || '',
-        status: lectureToEdit.status === 'cancelled' ? 'cancelled' : 'conducted'
+        status: normalizeLectureStatus(lectureToEdit.status)
       });
       return;
     }
 
     const last = loadLastLectureFields() || {};
-    const merged = { ...EMPTY, ...last, ...initialValues };
+    const merged = { ...EMPTY, ...last, ...initialValues, status: 'planned' };
     const times = normalizeLectureTimes(merged.startTime, merged.endTime);
     setForm({ ...merged, startTime: times.startTime, endTime: times.endTime });
   }, [isOpen, lectureToEdit, initialValues]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+  const clearField = (key) => () => setForm((f) => ({ ...f, [key]: '' }));
 
   const applyLastSaved = () => {
     const last = loadLastLectureFields();
@@ -148,6 +179,27 @@ export default function AcademicLectureModal({
       deliveryMethod: last.deliveryMethod || f.deliveryMethod
     }));
   };
+
+  const clearClassDetails = () => {
+    setForm((f) => ({
+      ...f,
+      academicYear: '',
+      className: '',
+      divisions: '',
+      subject: '',
+      semester: '',
+      deliveryMethod: ''
+    }));
+  };
+
+  const hasClassDetails = Boolean(
+    form.academicYear ||
+      form.className ||
+      form.divisions ||
+      form.subject ||
+      form.semester ||
+      form.deliveryMethod
+  );
 
   const handleStartTimeChange = (e) => {
     const startTime = e.target.value;
@@ -185,7 +237,7 @@ export default function AcademicLectureModal({
           : Number(form.numberOfStudents),
       roomNo: form.roomNo.trim(),
       remarks: form.remarks.trim(),
-      status: form.status === 'cancelled' ? 'cancelled' : 'conducted'
+      status: normalizeLectureStatus(form.status)
     };
 
     if (!payload.academicYear || !payload.className || !payload.divisions || !payload.subject || !payload.lectureDate || !payload.topic) {
@@ -220,12 +272,31 @@ export default function AcademicLectureModal({
             {lectureToEdit ? 'Edit academic lecture' : 'Add academic lecture'}
           </h2>
           {hasLastSaved && !lectureToEdit ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={applyLastSaved}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 px-2 py-1 rounded-lg border border-primary-200 bg-primary-50"
+              >
+                Use last details
+              </button>
+              {hasClassDetails ? (
+                <button
+                  type="button"
+                  onClick={clearClassDetails}
+                  className="text-xs font-medium text-slate-600 hover:text-slate-800 px-2 py-1 rounded-lg border border-slate-200 bg-white"
+                >
+                  Clear class details
+                </button>
+              ) : null}
+            </div>
+          ) : !lectureToEdit && hasClassDetails ? (
             <button
               type="button"
-              onClick={applyLastSaved}
-              className="text-xs font-medium text-primary-600 hover:text-primary-700 px-2 py-1 rounded-lg border border-primary-200 bg-primary-50"
+              onClick={clearClassDetails}
+              className="text-xs font-medium text-slate-600 hover:text-slate-800 px-2 py-1 rounded-lg border border-slate-200 bg-white"
             >
-              Use last details
+              Clear class details
             </button>
           ) : null}
         </div>
@@ -236,6 +307,7 @@ export default function AcademicLectureModal({
             required
             value={form.academicYear}
             onChange={set('academicYear')}
+            onClear={clearField('academicYear')}
             options={opts.academicYears}
             placeholder="2025-26"
             listId="lecture-ay-list"
@@ -244,6 +316,7 @@ export default function AcademicLectureModal({
             label="Semester"
             value={form.semester}
             onChange={set('semester')}
+            onClear={clearField('semester')}
             options={opts.semesters}
             placeholder="SEM5"
             listId="lecture-sem-list"
@@ -253,13 +326,36 @@ export default function AcademicLectureModal({
             required
             value={form.className}
             onChange={set('className')}
+            onClear={clearField('className')}
             options={opts.classes}
             placeholder="TYBCA"
             listId="lecture-class-list"
           />
           <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 items-start">
-            <span className="text-sm text-slate-600">Divisions</span>
-            <span className="text-sm text-slate-600 hidden sm:block">Subject</span>
+            <span className="text-sm text-slate-600 flex items-center justify-between gap-2">
+              <span>Divisions</span>
+              {form.divisions.trim() ? (
+                <button
+                  type="button"
+                  onClick={clearField('divisions')}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </span>
+            <span className="text-sm text-slate-600 hidden sm:flex items-center justify-between gap-2">
+              <span>Subject</span>
+              {form.subject.trim() ? (
+                <button
+                  type="button"
+                  onClick={clearField('subject')}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </span>
             {opts.divisions.length > 0 ? (
               <div className="sm:col-span-2 flex flex-wrap gap-1.5 pb-0.5">
                 {opts.divisions.map((d) => {
@@ -308,7 +404,18 @@ export default function AcademicLectureModal({
               </span>
             </div>
             <div>
-              <span className="text-sm text-slate-600 sm:hidden block mb-0">Subject</span>
+              <span className="text-sm text-slate-600 sm:hidden flex items-center justify-between gap-2 mb-0">
+                <span>Subject</span>
+                {form.subject.trim() ? (
+                  <button
+                    type="button"
+                    onClick={clearField('subject')}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                  >
+                    Clear
+                  </button>
+                ) : null}
+              </span>
               <input
                 required
                 value={form.subject}
@@ -430,8 +537,11 @@ export default function AcademicLectureModal({
                 onChange={set('status')}
                 className={`${fieldClass} bg-white`}
               >
-                <option value="conducted">Conducted</option>
-                <option value="cancelled">Cancelled</option>
+                {LECTURE_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
               <span className="text-xs text-slate-400 mt-0.5 block">
                 If cancelled, note the reason in Remarks.

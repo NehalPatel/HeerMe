@@ -442,7 +442,13 @@ export default function CalendarView({ onSignOut }) {
       const divs = (lec?.divisions?.length ? lec.divisions : [lec?.division]).filter(Boolean);
       const times = normalizeLectureTimes(lec?.startTime, lec?.endTime);
       const lines = [
-        `Status: ${lec?.status === 'cancelled' ? 'Cancelled' : 'Conducted'}`,
+        `Status: ${
+          lec?.status === 'cancelled'
+            ? 'Cancelled'
+            : lec?.status === 'planned'
+              ? 'Planned'
+              : 'Conducted'
+        }`,
         `Class: ${lec?.className || ''}`,
         `Division(s): ${divs.join(', ') || '—'}`,
         `Subject: ${lec?.subject || ''}`,
@@ -535,7 +541,12 @@ export default function CalendarView({ onSignOut }) {
       numberOfStudents: form.numberOfStudents,
       roomNo: form.roomNo,
       remarks: form.remarks,
-      status: form.status === 'cancelled' ? 'cancelled' : 'conducted'
+      status:
+        form.status === 'cancelled'
+          ? 'cancelled'
+          : form.status === 'planned'
+            ? 'planned'
+            : 'conducted'
     };
     const lectureId = editingLecture?.id || editingLecture?._id;
     const isEdit = Boolean(lectureId);

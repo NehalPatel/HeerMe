@@ -18,7 +18,8 @@ function serialize(doc) {
   const o = doc.toObject();
   const divisions = lectureDivisions(o);
   const times = normalizeLectureTimes(o.startTime, o.endTime);
-  const status = o.status === 'cancelled' ? 'cancelled' : 'conducted';
+  const status =
+    o.status === 'cancelled' ? 'cancelled' : o.status === 'planned' ? 'planned' : 'conducted';
   return {
     ...o,
     id: String(o._id),
@@ -34,7 +35,8 @@ function serialize(doc) {
 function parseLectureStatus(value) {
   const s = trimStr(value).toLowerCase();
   if (s === 'cancelled') return 'cancelled';
-  if (s === 'conducted' || s === '') return 'conducted';
+  if (s === 'planned' || s === '') return 'planned';
+  if (s === 'conducted') return 'conducted';
   return null;
 }
 
@@ -99,7 +101,7 @@ router.post('/', async (req, res, next) => {
 
     const status = parseLectureStatus(body.status);
     if (status == null) {
-      return res.status(400).json({ error: 'status must be conducted or cancelled' });
+      return res.status(400).json({ error: 'status must be planned, conducted, or cancelled' });
     }
 
     const times = normalizeLectureTimes(body.startTime, body.endTime);
@@ -177,7 +179,7 @@ router.put('/:id', async (req, res, next) => {
     if (body.status !== undefined) {
       const status = parseLectureStatus(body.status);
       if (status == null) {
-        return res.status(400).json({ error: 'status must be conducted or cancelled' });
+        return res.status(400).json({ error: 'status must be planned, conducted, or cancelled' });
       }
       updates.status = status;
     }
