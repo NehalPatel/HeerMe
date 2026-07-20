@@ -43,6 +43,7 @@ import {
 import Swal from 'sweetalert2';
 
 const SessionPlansPanel = lazy(() => import('./SessionPlansPanel'));
+const LecturesPanel = lazy(() => import('./LecturesPanel'));
 
 
 export default function CalendarView({ onSignOut }) {
@@ -61,6 +62,8 @@ export default function CalendarView({ onSignOut }) {
   const [lectureModalOpen, setLectureModalOpen] = useState(false);
   const [lectureToEdit, setLectureToEdit] = useState(null);
   const [lectureSuggestions, setLectureSuggestions] = useState(null);
+  /** Bump to refetch Lectures tab table after create/update. */
+  const [lecturesRefreshKey, setLecturesRefreshKey] = useState(0);
   const [attendanceModalOpen, setAttendanceModalOpen] = useState(false);
   /** YYYY-MM-DD for attendance modal only — avoids clearing when day-choice closes. */
   const [attendanceCalendarDate, setAttendanceCalendarDate] = useState(null);
@@ -543,6 +546,7 @@ export default function CalendarView({ onSignOut }) {
         saveLastLectureFields(form);
       }
       await refreshLecturesInView();
+      setLecturesRefreshKey((k) => k + 1);
       setLectureToEdit(null);
       await Swal.fire({
         icon: 'success',
@@ -899,6 +903,17 @@ export default function CalendarView({ onSignOut }) {
               </button>
               <button
                 type="button"
+                onClick={() => setMainTab('lectures')}
+                className={`px-3 sm:px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+                  mainTab === 'lectures'
+                    ? 'border-primary-500 text-primary-700 bg-primary-50/60'
+                    : 'border-transparent text-slate-600 hover:text-slate-800 hover:bg-slate-50'
+                }`}
+              >
+                Lectures
+              </button>
+              <button
+                type="button"
                 onClick={() => setMainTab('analytics')}
                 className={`px-3 sm:px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
                   mainTab === 'analytics'
@@ -984,6 +999,24 @@ export default function CalendarView({ onSignOut }) {
                 </span>
               </p>
             </div>
+
+            {mainTab === 'lectures' ? (
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-16 text-slate-500 text-sm">
+                    Loading lectures…
+                  </div>
+                }
+              >
+                <LecturesPanel
+                  refreshKey={lecturesRefreshKey}
+                  onEditLecture={(lec) => {
+                    setLectureToEdit(lec);
+                    setLectureModalOpen(true);
+                  }}
+                />
+              </Suspense>
+            ) : null}
 
             {mainTab === 'analytics' ? (
               <AttendanceAnalyticsPanel

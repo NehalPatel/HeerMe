@@ -41,3 +41,8 @@ export function normalizeLectureTimes(startTime, endTime) {
 export function lectureDateTime(lectureDate, hm) {
   return new Date(`${lectureDate}T${hm}:00`);
 }
+
+export function formatLectureTimeRange(startTime, endTime) {
+  const { startTime: s, endTime: e } = normalizeLectureTimes(startTime, endTime);
+  return `${s} – ${e}`;
+}
