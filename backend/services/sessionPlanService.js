@@ -83,14 +83,21 @@ export async function generateSessionPlan({
   periodTo,
   semester = ''
 }) {
-  const lectures = await AcademicLecture.find({
+  const lectureFilter = {
     academicYear,
     className,
     subject,
     lectureDate: { $gte: periodFrom, $lte: periodTo },
     status: { $ne: 'cancelled' },
     ...divisionLectureFilter(division)
-  }).sort({ lectureDate: 1, startTime: 1, createdAt: 1 });
+  };
+  if (semester) lectureFilter.semester = semester;
+
+  const lectures = await AcademicLecture.find(lectureFilter).sort({
+    lectureDate: 1,
+    startTime: 1,
+    createdAt: 1
+  });
 
   const generatedRows = lectures.map((lec, i) => lectureToRow(lec, i + 1));
 
@@ -142,12 +149,19 @@ export async function generateSessionPlansBulk({
   semester = '',
   facultyName = ''
 }) {
-  const lectures = await AcademicLecture.find({
+  const lectureFilter = {
     academicYear,
     className,
     lectureDate: { $gte: periodFrom, $lte: periodTo },
     status: { $ne: 'cancelled' }
-  }).sort({ division: 1, subject: 1, lectureDate: 1 });
+  };
+  if (semester) lectureFilter.semester = semester;
+
+  const lectures = await AcademicLecture.find(lectureFilter).sort({
+    division: 1,
+    subject: 1,
+    lectureDate: 1
+  });
 
   const combos = new Map();
   for (const lec of lectures) {
