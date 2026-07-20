@@ -18,6 +18,7 @@ function serialize(doc) {
   const o = doc.toObject();
   const divisions = lectureDivisions(o);
   const times = normalizeLectureTimes(o.startTime, o.endTime);
+  const status = o.status === 'cancelled' ? 'cancelled' : 'conducted';
   return {
     ...o,
     id: String(o._id),
@@ -25,8 +26,16 @@ function serialize(doc) {
     division: divisions[0] || o.division || '',
     startTime: times.startTime,
     endTime: times.endTime,
-    numberOfStudents: o.numberOfStudents ?? null
+    numberOfStudents: o.numberOfStudents ?? null,
+    status
   };
+}
+
+function parseLectureStatus(value) {
+  const s = trimStr(value).toLowerCase();
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'conducted' || s === '') return 'conducted';
+  return null;
 }
 
 function buildListFilter(query) {
@@ -88,6 +97,11 @@ router.post('/', async (req, res, next) => {
       return res.status(400).json({ error: 'lectureDate must be YYYY-MM-DD' });
     }
 
+    const status = parseLectureStatus(body.status);
+    if (status == null) {
+      return res.status(400).json({ error: 'status must be conducted or cancelled' });
+    }
+
     const times = normalizeLectureTimes(body.startTime, body.endTime);
 
     const doc = await AcademicLecture.create({
@@ -107,6 +121,7 @@ router.post('/', async (req, res, next) => {
       numberOfStudents: parseOptionalStudentCount(body.numberOfStudents),
       roomNo: trimStr(body.roomNo),
       remarks: trimStr(body.remarks),
+      status,
       updatedAt: new Date()
     });
     res.status(201).json(serialize(doc));
@@ -158,6 +173,13 @@ router.put('/:id', async (req, res, next) => {
     }
     if (body.numberOfStudents !== undefined) {
       updates.numberOfStudents = parseOptionalStudentCount(body.numberOfStudents);
+    }
+    if (body.status !== undefined) {
+      const status = parseLectureStatus(body.status);
+      if (status == null) {
+        return res.status(400).json({ error: 'status must be conducted or cancelled' });
+      }
+      updates.status = status;
     }
     const doc = await AcademicLecture.findByIdAndUpdate(req.params.id, { $set: updates }, {
       new: true,

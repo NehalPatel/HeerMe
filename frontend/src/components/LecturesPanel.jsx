@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getAcademicLectures, apiErrorMessage } from '../services/api';
 import { formatLectureTimeRange } from '../utils/lectureTimes';
+import { toLocalYmd } from '../utils/calendarDates';
 
 function formatLectureDate(ymd) {
   if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd || '—';
@@ -15,6 +16,13 @@ function divisionLabel(lec) {
   const divs = lec?.divisions?.length ? lec.divisions : [lec?.division];
   const cleaned = (divs || []).filter(Boolean);
   return cleaned.length ? cleaned.join(', ') : '—';
+}
+
+/** First and last YYYY-MM-DD of the calendar month containing `d`. */
+function currentMonthRange(d = new Date()) {
+  const from = new Date(d.getFullYear(), d.getMonth(), 1);
+  const to = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { from: toLocalYmd(from), to: toLocalYmd(to) };
 }
 
 function SortHeader({ label, active, dir, onClick }) {
@@ -39,12 +47,13 @@ function SortHeader({ label, active, dir, onClick }) {
 }
 
 export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
+  const initialMonth = useMemo(() => currentMonthRange(), []);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [classFilter, setClassFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(initialMonth.from);
+  const [dateTo, setDateTo] = useState(initialMonth.to);
   const [sortKey, setSortKey] = useState('lectureDate');
   const [sortDir, setSortDir] = useState('desc');
 
@@ -120,12 +129,17 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
   };
 
   const clearFilters = () => {
+    const month = currentMonthRange();
     setClassFilter('');
-    setDateFrom('');
-    setDateTo('');
+    setDateFrom(month.from);
+    setDateTo(month.to);
   };
 
-  const hasFilters = Boolean(classFilter || dateFrom || dateTo);
+  const monthDefaults = currentMonthRange();
+  const hasFilters =
+    Boolean(classFilter) ||
+    dateFrom !== monthDefaults.from ||
+    dateTo !== monthDefaults.to;
 
   const toolbar = (
     <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
@@ -251,8 +265,10 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
                   dir={sortDir}
                   onClick={() => toggleSort('className')}
                 />
+                <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">Semester</th>
                 <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">Division</th>
                 <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">Subject</th>
+                <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">Status</th>
                 <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">Time</th>
                 <th className="px-2 py-2.5 border-b border-slate-200 whitespace-nowrap">No. of students</th>
               </tr>
@@ -260,10 +276,13 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
             <tbody>
               {filteredSorted.map((lec, i) => {
                 const id = lec.id || lec._id || i;
+                const cancelled = lec.status === 'cancelled';
                 return (
                   <tr
                     key={id}
-                    className="border-b border-slate-100 last:border-0 hover:bg-primary-50/40 cursor-pointer"
+                    className={`border-b border-slate-100 last:border-0 cursor-pointer ${
+                      cancelled ? 'bg-red-50/70 hover:bg-red-50' : 'hover:bg-primary-50/40'
+                    }`}
                     onClick={() => onEditLecture?.(lec)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
@@ -280,8 +299,20 @@ export default function LecturesPanel({ onEditLecture, refreshKey = 0 }) {
                       {formatLectureDate(lec.lectureDate)}
                     </td>
                     <td className="px-2 py-2 text-slate-800 whitespace-nowrap">{lec.className || '—'}</td>
+                    <td className="px-2 py-2 text-slate-800 whitespace-nowrap">{lec.semester || '—'}</td>
                     <td className="px-2 py-2 text-slate-800 whitespace-nowrap">{divisionLabel(lec)}</td>
                     <td className="px-2 py-2 text-slate-800">{lec.subject || '—'}</td>
+                    <td className="px-2 py-2 whitespace-nowrap">
+                      <span
+                        className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
+                          cancelled
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}
+                      >
+                        {cancelled ? 'Cancelled' : 'Conducted'}
+                      </span>
+                    </td>
                     <td className="px-2 py-2 text-slate-800 whitespace-nowrap">
                       {formatLectureTimeRange(lec.startTime, lec.endTime)}
                     </td>

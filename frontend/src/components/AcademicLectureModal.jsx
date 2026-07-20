@@ -25,7 +25,8 @@ const EMPTY = {
   deliveryMethod: '',
   numberOfStudents: '',
   roomNo: '',
-  remarks: ''
+  remarks: '',
+  status: 'conducted'
 };
 
 const UNIT_OPTIONS = ['UNIT-1', 'UNIT-2', 'UNIT-3', 'UNIT-4', 'UNIT-5'];
@@ -120,7 +121,8 @@ export default function AcademicLectureModal({
             ? String(lectureToEdit.numberOfStudents)
             : '',
         roomNo: lectureToEdit.roomNo || '',
-        remarks: lectureToEdit.remarks || ''
+        remarks: lectureToEdit.remarks || '',
+        status: lectureToEdit.status === 'cancelled' ? 'cancelled' : 'conducted'
       });
       return;
     }
@@ -182,7 +184,8 @@ export default function AcademicLectureModal({
           ? null
           : Number(form.numberOfStudents),
       roomNo: form.roomNo.trim(),
-      remarks: form.remarks.trim()
+      remarks: form.remarks.trim(),
+      status: form.status === 'cancelled' ? 'cancelled' : 'conducted'
     };
 
     if (!payload.academicYear || !payload.className || !payload.divisions || !payload.subject || !payload.lectureDate || !payload.topic) {
@@ -254,10 +257,11 @@ export default function AcademicLectureModal({
             placeholder="TYBCA"
             listId="lecture-class-list"
           />
-          <label className="text-sm text-slate-600 sm:col-span-2 lg:col-span-3">
-            Divisions
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 items-start">
+            <span className="text-sm text-slate-600">Divisions</span>
+            <span className="text-sm text-slate-600 hidden sm:block">Subject</span>
             {opts.divisions.length > 0 ? (
-              <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
+              <div className="sm:col-span-2 flex flex-wrap gap-1.5 pb-0.5">
                 {opts.divisions.map((d) => {
                   const parts = form.divisions
                     .split(/[,+/|&\s]+/)
@@ -284,33 +288,43 @@ export default function AcademicLectureModal({
                 })}
               </div>
             ) : null}
-            <input
-              required
-              value={form.divisions}
-              onChange={set('divisions')}
-              className={fieldClass}
-              placeholder="F  or  F, G  (merged class)"
-              list="lecture-divisions-list"
-            />
-            <datalist id="lecture-divisions-list">
-              {opts.divisions.map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
-            <span className="text-xs text-slate-400 mt-0.5 block">
-              Tap chips above or type comma-separated divisions for merged class.
-            </span>
-          </label>
-          <SuggestField
-            label="Subject"
-            required
-            className="sm:col-span-2 lg:col-span-3"
-            value={form.subject}
-            onChange={set('subject')}
-            options={opts.subjects}
-            placeholder="Advance Web Designing"
-            listId="lecture-subject-list"
-          />
+            <div>
+              <input
+                required
+                value={form.divisions}
+                onChange={set('divisions')}
+                className={fieldClass}
+                placeholder="F  or  F, G  (merged class)"
+                list="lecture-divisions-list"
+                aria-label="Divisions"
+              />
+              <datalist id="lecture-divisions-list">
+                {opts.divisions.map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
+              <span className="text-xs text-slate-400 mt-0.5 block">
+                Tap chips above or type comma-separated divisions for merged class.
+              </span>
+            </div>
+            <div>
+              <span className="text-sm text-slate-600 sm:hidden block mb-0">Subject</span>
+              <input
+                required
+                value={form.subject}
+                onChange={set('subject')}
+                className={fieldClass}
+                placeholder="Advance Web Designing"
+                list="lecture-subject-list"
+                aria-label="Subject"
+              />
+              <datalist id="lecture-subject-list">
+                {opts.subjects.map((opt) => (
+                  <option key={opt} value={opt} />
+                ))}
+              </datalist>
+            </div>
+          </div>
           <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2.5">
             <label className="text-sm text-slate-600">
               Lecture date
@@ -398,10 +412,32 @@ export default function AcademicLectureModal({
               className={`${fieldClass} resize-none`}
             />
           </label>
-          <label className="text-sm text-slate-600 lg:col-span-3">
-            Remarks
-            <textarea value={form.remarks} onChange={set('remarks')} rows={2} className={`${fieldClass} resize-none`} />
-          </label>
+          <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-2.5 items-start">
+            <label className="text-sm text-slate-600 sm:col-span-2">
+              Remarks
+              <textarea
+                value={form.remarks}
+                onChange={set('remarks')}
+                rows={2}
+                className={`${fieldClass} resize-none`}
+                placeholder={form.status === 'cancelled' ? 'Reason for cancellation' : ''}
+              />
+            </label>
+            <label className="text-sm text-slate-600">
+              Lecture status
+              <select
+                value={form.status}
+                onChange={set('status')}
+                className={`${fieldClass} bg-white`}
+              >
+                <option value="conducted">Conducted</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <span className="text-xs text-slate-400 mt-0.5 block">
+                If cancelled, note the reason in Remarks.
+              </span>
+            </label>
+          </div>
         </div>
         <div className="flex gap-3 mt-4">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50">

@@ -88,6 +88,7 @@ export async function generateSessionPlan({
     className,
     subject,
     lectureDate: { $gte: periodFrom, $lte: periodTo },
+    status: { $ne: 'cancelled' },
     ...divisionLectureFilter(division)
   }).sort({ lectureDate: 1, startTime: 1, createdAt: 1 });
 
@@ -144,7 +145,8 @@ export async function generateSessionPlansBulk({
   const lectures = await AcademicLecture.find({
     academicYear,
     className,
-    lectureDate: { $gte: periodFrom, $lte: periodTo }
+    lectureDate: { $gte: periodFrom, $lte: periodTo },
+    status: { $ne: 'cancelled' }
   }).sort({ division: 1, subject: 1, lectureDate: 1 });
 
   const combos = new Map();

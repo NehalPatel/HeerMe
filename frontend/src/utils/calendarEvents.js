@@ -100,15 +100,17 @@ export function lectureToEvent(lec) {
   const times = normalizeLectureTimes(lec.startTime, lec.endTime);
   const start = lectureDateTime(lec.lectureDate, times.startTime);
   const end = lectureDateTime(lec.lectureDate, times.endTime);
+  const cancelled = lec.status === 'cancelled';
   return {
     id: `lecture-${lec.id || lec._id}`,
-    title: `${label}: ${lec.topic}`,
+    title: cancelled ? `Cancelled: ${label}: ${lec.topic}` : `${label}: ${lec.topic}`,
     start: start.toISOString(),
     end: end.toISOString(),
     allDay: false,
-    backgroundColor: '#4f46e5',
-    borderColor: '#4338ca',
-    textColor: '#eef2ff',
+    backgroundColor: cancelled ? '#dc2626' : '#4f46e5',
+    borderColor: cancelled ? '#b91c1c' : '#4338ca',
+    textColor: cancelled ? '#fef2f2' : '#eef2ff',
+    classNames: cancelled ? ['heerme-lecture-cancelled'] : [],
     extendedProps: {
       isLecture: true,
       lecture: lec
