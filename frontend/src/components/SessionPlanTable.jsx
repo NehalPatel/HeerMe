@@ -16,7 +16,7 @@ export default function SessionPlanTable({ rows, onChange, onRemoveRow }) {
   if (!rows.length) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-6 text-center text-sm text-slate-500">
-        No sessions in this plan yet. Add academic lectures in this period, then generate or refresh the plan.
+        No lectures conducted in given duration. You can still download the DOCX with this message.
       </div>
     );
   }

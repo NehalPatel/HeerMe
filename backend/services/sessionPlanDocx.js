@@ -103,6 +103,12 @@ function buildDataRow(row) {
   return `<w:tr w:rsidR="00480507" w:rsidTr="00A74CDE">${cells.join('')}</w:tr>`;
 }
 
+const EMPTY_LECTURES_MESSAGE = 'No lectures conducted in given duration';
+
+function buildEmptyMessageRow() {
+  return `<w:tr w:rsidR="00480507" w:rsidTr="00A74CDE"><w:tc><w:tcPr><w:tcW w:w="${TABLE_WIDTH}" w:type="dxa"/><w:gridSpan w:val="${COL_WIDTHS.length}"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:pPr>${textRunBold(EMPTY_LECTURES_MESSAGE)}</w:p></w:tc></w:tr>`;
+}
+
 function fillPlaceholders(xml, values) {
   let out = xml;
   for (const [key, value] of Object.entries(values)) {
@@ -135,7 +141,8 @@ function patchDocument(xml, rows) {
   const inner = tableMatch[1];
   const tblPr = inner.match(/<w:tblPr>[\s\S]*?<\/w:tblPr>/)?.[0] || '';
   const tblPrWithWidth = tblPr.replace(/<w:tblW[^/]*\/>/, `<w:tblW w:w="${TABLE_WIDTH}" w:type="dxa"/>`);
-  const dataRows = (rows || []).map(buildDataRow).join('');
+  const dataRows =
+    rows && rows.length ? rows.map(buildDataRow).join('') : buildEmptyMessageRow();
   const newTable = `<w:tbl>${tblPrWithWidth}${buildTblGrid()}${buildHeaderRow()}${dataRows}</w:tbl>`;
   return xml.replace(/<w:tbl>[\s\S]*?<\/w:tbl>/, newTable);
 }

@@ -118,19 +118,28 @@ export default function SessionPlansPanel() {
       if (!generated.length) {
         await Swal.fire({
           icon: 'info',
-          title: 'No lectures found',
-          text: 'Add lectures from the calendar for this class and date range, then try again.'
+          title: 'No plans created',
+          text: 'Could not create a session plan for these filters.'
         });
         applySelectedPlan(null);
       } else {
+        const emptyCount = generated.filter((p) => !(p.rows || []).length).length;
         applySelectedPlan(generated[0]);
-        await Swal.fire({
-          icon: 'success',
-          title: 'Generated',
-          text: `Created ${generated.length} session plan(s) for division + subject combinations.`,
-          timer: 2000,
-          showConfirmButton: false
-        });
+        if (emptyCount === generated.length) {
+          await Swal.fire({
+            icon: 'info',
+            title: 'No lectures in this period',
+            text: 'Plan created with no sessions. You can download a DOCX that states “No lectures conducted in given duration”.'
+          });
+        } else {
+          await Swal.fire({
+            icon: 'success',
+            title: 'Generated',
+            text: `Created ${generated.length} session plan(s) for division + subject combinations.`,
+            timer: 2000,
+            showConfirmButton: false
+          });
+        }
       }
     } catch (err) {
       await Swal.fire({ icon: 'error', title: 'Generate failed', text: apiErrorMessage(err, 'Could not generate.') });

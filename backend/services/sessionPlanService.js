@@ -141,28 +141,7 @@ export async function generateSessionPlan({
   return plan;
 }
 
-export async function generateSessionPlansBulk({
-  academicYear,
-  className,
-  periodFrom,
-  periodTo,
-  semester = '',
-  facultyName = ''
-}) {
-  const lectureFilter = {
-    academicYear,
-    className,
-    lectureDate: { $gte: periodFrom, $lte: periodTo },
-    status: { $ne: 'cancelled' }
-  };
-  if (semester) lectureFilter.semester = semester;
-
-  const lectures = await AcademicLecture.find(lectureFilter).sort({
-    division: 1,
-    subject: 1,
-    lectureDate: 1
-  });
-
+function collectCombos(lectures) {
   const combos = new Map();
   for (const lec of lectures) {
     const divs = lectureDivisions(lec);
@@ -172,6 +151,46 @@ export async function generateSessionPlansBulk({
         combos.set(key, { division: div, subject: lec.subject, semester: lec.semester || '' });
       }
     }
+  }
+  return combos;
+}
+
+export async function generateSessionPlansBulk({
+  academicYear,
+  className,
+  periodFrom,
+  periodTo,
+  semester = '',
+  facultyName = ''
+}) {
+  const baseFilter = {
+    academicYear,
+    className,
+    status: { $ne: 'cancelled' }
+  };
+  if (semester) baseFilter.semester = semester;
+
+  const lecturesInRange = await AcademicLecture.find({
+    ...baseFilter,
+    lectureDate: { $gte: periodFrom, $lte: periodTo }
+  }).sort({
+    division: 1,
+    subject: 1,
+    lectureDate: 1
+  });
+
+  let combos = collectCombos(lecturesInRange);
+
+  // No lectures in the selected period — still build plans from known
+  // division/subject combos (or a placeholder) so an empty DOCX can be downloaded.
+  if (!combos.size) {
+    const historical = await AcademicLecture.find(baseFilter)
+      .select('division divisions subject semester')
+      .lean();
+    combos = collectCombos(historical);
+  }
+  if (!combos.size) {
+    combos.set('-|||-', { division: '-', subject: '-', semester: semester || '' });
   }
 
   const plans = [];
