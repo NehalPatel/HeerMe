@@ -10,6 +10,7 @@ import AttendanceModal from './AttendanceModal';
 import AcademicLectureModal from './AcademicLectureModal';
 import AttendanceAnalyticsPanel from './AttendanceAnalyticsPanel';
 import ReminderDetailModal from './ReminderDetailModal';
+import LiveClock from './LiveClock';
 import { normalizeLectureTimes } from '../utils/lectureTimes';
 import { extractLectureFieldOptions, saveLastLectureFields } from '../utils/lectureFieldOptions';
 import {
@@ -687,7 +688,10 @@ export default function CalendarView({ onSignOut }) {
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold text-primary-600 leading-none">HeerMe</h1>
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-0.5 sm:gap-3 min-w-0">
+            <h1 className="text-2xl font-bold text-primary-600 leading-none">HeerMe</h1>
+            <LiveClock className="text-xs sm:text-sm font-medium text-slate-500 tabular-nums tracking-tight whitespace-nowrap" />
+          </div>
           <div className="flex items-center justify-end flex-none gap-1">
             <button
               type="button"
